@@ -266,6 +266,12 @@ __declspec(dllimport) unsigned int __stdcall timeEndPeriod(unsigned int uPeriod)
 //----------------------------------------------------------------------------------
 // Types and Structures Definition
 //----------------------------------------------------------------------------------
+#if defined(PLATFORM_IOS)
+    // MacTypes.h (via UIKit) définit déjà Point et Size : on renomme ceux de raylib.
+    // Les macros sont retirées avant l'inclusion de rcore_ios.m.
+    #define Point rlCorePoint
+    #define Size rlCoreSize
+#endif
 typedef struct { int x; int y; } Point;
 typedef struct { unsigned int width; unsigned int height; } Size;
 
@@ -549,6 +555,8 @@ const char *TextFormat(const char *text, ...);              // Formatting of tex
 #elif defined(PLATFORM_ANDROID)
     #include "platforms/rcore_android.c"
 #elif defined(PLATFORM_IOS)
+    #undef Point
+    #undef Size
     #include "platforms/rcore_ios.m"
 #else
     // TODO: Include your custom platform backend!
