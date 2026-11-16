@@ -868,6 +868,16 @@ RLAPI void rlLoadDrawQuad(void);     // Load and draw a quad
     #if defined(PLATFORM_DESKTOP_GLFW) || defined(PLATFORM_DESKTOP_SDL)
         #define GLAD_GLES2_IMPLEMENTATION
         #include "external/glad_gles2.h"
+    #elif defined(PLATFORM_IOS)
+        // iOS : pas de GLES2/gl2.h, Apple fournit OpenGLES/ES2/*.h (sans les typedefs PFN*)
+        #include <OpenGLES/ES2/gl.h>
+        #include <OpenGLES/ES2/glext.h>
+        typedef void (*PFNGLGENVERTEXARRAYSOESPROC) (GLsizei n, GLuint *arrays);
+        typedef void (*PFNGLBINDVERTEXARRAYOESPROC) (GLuint array);
+        typedef void (*PFNGLDELETEVERTEXARRAYSOESPROC) (GLsizei n, const GLuint *arrays);
+        typedef void (*PFNGLDRAWARRAYSINSTANCEDEXTPROC) (GLenum mode, GLint start, GLsizei count, GLsizei primcount);
+        typedef void (*PFNGLDRAWELEMENTSINSTANCEDEXTPROC) (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei primcount);
+        typedef void (*PFNGLVERTEXATTRIBDIVISOREXTPROC) (GLuint index, GLuint divisor);
     #else
         #define GL_GLEXT_PROTOTYPES
         //#include <EGL/egl.h>          // EGL library -> not required, platform layer

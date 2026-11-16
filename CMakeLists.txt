@@ -34,6 +34,8 @@ if(ANDROID)
 elseif(IOS_BUILD)
     # OpenGL ES 2 + UIKit. rcore.c inclut rcore_ios.m, donc ce fichier est compilé en Objective-C.
     set_source_files_properties(${RL}/rcore.c PROPERTIES LANGUAGE OBJC COMPILE_FLAGS "-fobjc-arc")
+    # miniaudio (dans raudio.c) inclut AVFoundation sur iOS : Objective-C obligatoire.
+    set_source_files_properties(${RL}/raudio.c PROPERTIES LANGUAGE OBJC)
     add_library(raylib STATIC ${RAYLIB_SOURCES})
     target_compile_definitions(raylib PUBLIC PLATFORM_IOS GRAPHICS_API_OPENGL_ES2)
     target_include_directories(raylib PUBLIC ${RL})
