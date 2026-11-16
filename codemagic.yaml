@@ -65,9 +65,9 @@ workflows:
               CODE_SIGNING_ALLOWED=NO \
               CODE_SIGN_IDENTITY="" \
               DEVELOPMENT_TEAM=""
+            # Copie le .app à la racine pour l'artifact
+            cp -r "$CM_BUILD_DIR/build/ios/DerivedData/Build/Products/Release-iphoneos/ubear.app" "$CM_BUILD_DIR/"
           fi
     artifacts:
-      - build/ios/**/*.app
-      - build/ios/**/*.ipa
-      - build/ios/DerivedData/**/*.app
+      - ubear.app
       - build/ios/ipa/*.ipa
