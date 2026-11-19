@@ -1,73 +1,159 @@
-# Compilation iOS d'Ubear sur Codemagic.
-# Le dépôt Git doit avoir ce fichier à sa racine (le dossier ubear-mobile).
+# =============================================================================
+# codemagic.yaml - Reproduction du workflow "Default Workflow (Copy)"
+# du Workflow Editor (iOS uniquement, Shorebird désactivé).
 #
-# Sans certificat : on obtient une .app non signée.
-# Avec une intégration App Store Connect dans l'interface Codemagic
-# (clé API, certificat iOS, profil pour com.ubear.game) : on obtient une .ipa.
+# Ce fichier doit être placé à la RACINE du dépôt (flutter_container),
+# sur la branche "master", puis il faut cliquer sur
+# "Check for configuration files" dans Codemagic.
+#
+# Sections de l'éditeur supposées vides ou laissées par défaut :
+# Build triggers, Environment variables, Dependency caching, Tests,
+# Notifications. Si tu y avais configuré quelque chose, il faut l'ajouter ici.
+# =============================================================================
+
 workflows:
-  ubear-ios:
-    name: Ubear iOS
+  ios-release:
+    name: Default Workflow (Copy)
+
+    # "Max build duration" de l'éditeur : 60 minutes.
     max_build_duration: 60
+
+    # "Run build on" de l'éditeur : macOS M2.
     instance_type: mac_mini_m2
+
+    # -------------------------------------------------------------------------
+    # Clé API App Store Connect
+    # -------------------------------------------------------------------------
+    # La valeur doit être le NOM EXACT de la clé enregistrée dans Codemagic
+    # (Settings > Integrations > Developer Portal / App Store Connect).
+    # Dans l'éditeur, elle s'affiche sous le nom
+    # "codemagic api key app store admin (Key: 87MW9UNZ54)".
+    # Le nom est la partie AVANT "(Key: ...)". Respecte les majuscules,
+    # les minuscules et les espaces.
+    integrations:
+      app_store_connect: codemagic api key app store admin
+
     environment:
-      xcode: latest
+      # Versions reprises de la section "Build" de l'éditeur.
+      flutter: 3.38.5
+      xcode: latest        # "Latest (26.6)" dans l'éditeur
+      cocoapods: default
+
+      # -----------------------------------------------------------------------
+      # Signature iOS
+      # -----------------------------------------------------------------------
+      # Le certificat et le profil sont pris dans
+      # Settings > codemagic.yaml settings > Code signing identities,
+      # par leur nom ("Reference name"). Les noms doivent être recopiés
+      # EXACTEMENT, avec les mêmes espaces, majuscules et minuscules.
+      # Codemagic les installe sur la machine de build, puis l'étape
+      # "xcode-project use-profiles" les applique au projet Xcode.
+      #
+      # - Certificat "certificat distribution 1.5" : type production, équipe
+      #   Fabien BOURRUT, expire le 09/04/2027.
+      # - Profil "certificat fab distribution webunic" : type app_store, équipe
+      #   Fabien BOURRUT, Bundle ID "*", expire le 09/04/2027.
+      #
+      # ATTENTION : ce profil est un profil WILDCARD (Bundle ID "*"). Il peut
+      # signer n'importe quelle app de l'équipe et l'envoyer sur TestFlight,
+      # MAIS seulement si l'app n'utilise aucune capability qui demande un
+      # Bundle ID explicite : Push Notifications, Sign in with Apple,
+      # In-App Purchase, iCloud, App Groups, Associated Domains...
+      # Si l'app en utilise une, il faut un profil App Store créé pour son
+      # Bundle ID explicite (developer.apple.com > Profiles), ajouté dans
+      # Code signing identities avec "Fetch profiles".
+      #
+      # Dans tous les cas, le Bundle ID du projet (PRODUCT_BUNDLE_IDENTIFIER
+      # dans ios/Runner.xcodeproj) doit être exactement celui de l'app créée
+      # dans App Store Connect.
+      ios_signing:
+        certificates:
+          - certificat distribution 1.5
+        provisioning_profiles:
+          - certificat fab distribution webunic
+
+      # Variables utilisées par les scripts.
       vars:
-        BUNDLE_ID: com.ubear.game
-        XCODE_PROJECT: build/ios/ubear.xcodeproj
-        XCODE_SCHEME: ubear
-      # Décommente après avoir ajouté l'intégration App Store Connect dans Codemagic.
-      # ios_signing:
-      #   distribution_type: app_store
-      #   bundle_identifier: com.ubear.game
+        # Apple ID de l'app (un nombre, par exemple 1234567890), visible dans
+        # App Store Connect > ton app > Informations sur l'app > Identifiant Apple.
+        # Il ne sert qu'à augmenter automatiquement le numéro de build
+        # (voir l'étape "Construire l'IPA"). Laisse-le vide si tu ne veux pas
+        # de cette option.
+        APP_STORE_APPLE_ID: ""
+
+    # -------------------------------------------------------------------------
+    # Déclenchement
+    # -------------------------------------------------------------------------
+    # Aucun déclencheur : les builds se lancent à la main depuis Codemagic,
+    # comme un workflow de l'éditeur sans "Build triggers".
+    # Pour lancer un build à chaque push sur master, décommente ce bloc :
+    #
+    # triggering:
+    #   events:
+    #     - push
+    #   branch_patterns:
+    #     - pattern: master
+    #       include: true
+
     scripts:
-      - name: Outils
+      - name: Récupérer les paquets Flutter
+        script: flutter pub get
+
+      - name: Installer les pods
+        script: find . -name "Podfile" -execdir pod install \;
+
+      # Applique au projet Xcode le certificat et le profil récupérés grâce à
+      # "ios_signing". Cette étape remplace la signature automatique de l'éditeur.
+      - name: Appliquer les profils de signature
+        script: xcode-project use-profiles
+
+      # "Mode : Release" et "Build arguments iOS : --release" de l'éditeur.
+      # Le texte grisé "--flavor ios-production -t lib/main_prod.dart" dans
+      # l'éditeur était un simple exemple, pas un argument réellement utilisé.
+      # Si ton projet a des flavors, ajoute-les ici.
+      #
+      # NUMERO DE BUILD : par défaut, il vient de la ligne "version:" du
+      # pubspec.yaml (le nombre après le "+"). TestFlight refuse un numéro
+      # de build déjà envoyé : il faut donc l'augmenter avant chaque build.
+      # Si APP_STORE_APPLE_ID est rempli plus haut, le script reprend le
+      # dernier numéro de build TestFlight et ajoute 1, automatiquement.
+      - name: Construire l'IPA
         script: |
-          set -e
-          brew list cmake >/dev/null 2>&1 || brew install cmake
-          cmake --version
-          xcodebuild -version
-      - name: Projet Xcode
-        script: |
-          set -e
-          cmake -G Xcode -S "$CM_BUILD_DIR" -B "$CM_BUILD_DIR/build/ios" \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=iphoneos \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=12.0 \
-            -DCMAKE_BUILD_TYPE=Release
-          xcodebuild -project "$XCODE_PROJECT" -list
-      - name: Signature si les certificats sont là
-        script: |
-          set -e
-          if [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]; then
-            keychain initialize
-            app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-            keychain add-certificates
-            xcode-project use-profiles --project "$XCODE_PROJECT"
-            echo "SIGNING=yes" >> "$CM_ENV"
+          if [ -n "$APP_STORE_APPLE_ID" ]; then
+            LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID" || echo 0)
+            flutter build ipa --release \
+              --build-number=$((LATEST + 1)) \
+              --export-options-plist=/Users/builder/export_options.plist
           else
-            echo "Pas de clé App Store Connect : compilation sans signature."
-            echo "SIGNING=no" >> "$CM_ENV"
+            flutter build ipa --release \
+              --export-options-plist=/Users/builder/export_options.plist
           fi
-      - name: Compiler
-        script: |
-          set -e
-          if [ "${SIGNING:-no}" = "yes" ]; then
-            xcode-project build-ipa --project "$XCODE_PROJECT" --scheme "$XCODE_SCHEME"
-          else
-            xcodebuild \
-              -project "$XCODE_PROJECT" \
-              -scheme "$XCODE_SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -destination "generic/platform=iOS" \
-              -derivedDataPath "$CM_BUILD_DIR/build/ios/DerivedData" \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGN_IDENTITY="" \
-              DEVELOPMENT_TEAM=""
-            # Copie le .app à la racine pour l'artifact
-            cp -r "$CM_BUILD_DIR/build/ios/Release-iphoneos/ubear.app" "$CM_BUILD_DIR/"
-          fi
+
+    # Fichiers conservés après le build et téléchargeables depuis Codemagic.
     artifacts:
-      - ubear.app
       - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - flutter_drive.log
+
+    # -------------------------------------------------------------------------
+    # Publication (section "Distribution > App Store Connect" de l'éditeur)
+    # -------------------------------------------------------------------------
+    publishing:
+      app_store_connect:
+        auth: integration              # utilise la clé déclarée dans "integrations"
+        submit_to_testflight: true     # "Submit to TestFlight beta review" : coché
+        submit_to_app_store: false     # "Submit to App Store review" : décoché
+
+        # "Distribute to beta groups" : décoché dans l'éditeur.
+        # Pour l'activer, décommente et indique le nom du groupe TestFlight :
+        # beta_groups:
+        #   - Nom du groupe
+
+      # "Notifications" : section repliée dans l'éditeur, supposée par défaut.
+      # Pour recevoir un email à la fin de chaque build, décommente :
+      # email:
+      #   recipients:
+      #     - ton@email.com
+      #   notify:
+      #     success: true
+      #     failure: true
