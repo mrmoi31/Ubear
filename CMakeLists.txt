@@ -40,6 +40,9 @@ elseif(IOS_BUILD)
     target_compile_definitions(raylib PUBLIC PLATFORM_IOS GRAPHICS_API_OPENGL_ES2)
     target_include_directories(raylib PUBLIC ${RL})
     target_compile_options(raylib PRIVATE -w)
+    # Sans ça, xcodebuild archive range libraylib.a dans l'archive -> "Generic Xcode Archive"
+    # au lieu d'une archive d'app iOS, et l'export IPA échoue (method "expected one {}").
+    set_target_properties(raylib PROPERTIES XCODE_ATTRIBUTE_SKIP_INSTALL "YES")
     target_link_libraries(raylib PUBLIC
         "-framework UIKit" "-framework Foundation" "-framework QuartzCore"
         "-framework OpenGLES" "-framework CoreGraphics" "-framework CoreVideo"
@@ -63,7 +66,9 @@ elseif(IOS_BUILD)
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "com.ubear.game"
         XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "12.0"
-        XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos iphonesimulator")
+        XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos iphonesimulator"
+        XCODE_ATTRIBUTE_SKIP_INSTALL "NO"
+        XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)")
 else()
     add_library(raylib STATIC ${RAYLIB_SOURCES} ${RL}/rglfw.c)
     target_compile_definitions(raylib PUBLIC PLATFORM_DESKTOP GRAPHICS_API_OPENGL_33)
