@@ -69,12 +69,12 @@ workflows:
       # Dans tous les cas, le Bundle ID du projet (PRODUCT_BUNDLE_IDENTIFIER
       # dans ios/ubear.xcodeproj) doit être exactement celui de l'app créée
       # dans App Store Connect.
-      # Décommente pour ajouter la signature :
-      # ios_signing:
-      #   certificates:
-      #     - certificat distribution 1.5
-      #   provisioning_profiles:
-      #     - certificat fab distribution webunic
+      #Décommente pour ajouter la signature :
+      ios_signing:
+        certificates:
+          - certificat distribution 1.5
+        provisioning_profiles:
+          - certificat fab distribution webunic
 
     # -------------------------------------------------------------------------
     # Déclenchement
@@ -158,11 +158,11 @@ workflows:
     # Publication (optionnel : App Store Connect)
     # -------------------------------------------------------------------------
     # Décommente et configure si tu veux pousser automatiquement vers TestFlight.
-    # publishing:
-    #   app_store_connect:
-    #     auth: integration              # utilise une clé App Store Connect
-    #     submit_to_testflight: true     # Envoyer à TestFlight
-    #     submit_to_app_store: false     # Ne pas soumettre à l'App Store
+    publishing:
+      app_store_connect:
+        auth: integration              # utilise une clé App Store Connect
+        submit_to_testflight: true     # Envoyer à TestFlight
+        submit_to_app_store: false     # Ne pas soumettre à l'App Store
 
     #     # "Distribute to beta groups" : décoché par défaut.
     #     # Pour l'activer, décommente et indique le nom du groupe TestFlight :
