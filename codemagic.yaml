@@ -114,16 +114,10 @@ workflows:
       - name: Signature si les certificats sont là
         script: |
           set -e
-          if [ -n "${APP_STORE_CONNECT_ISSUER_ID:-}" ]; then
-            keychain initialize
-            app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-            keychain add-certificates
-            xcode-project use-profiles --project "$XCODE_PROJECT"
-            echo "SIGNING=yes" >> "$CM_ENV"
-          else
-            echo "Pas de clé App Store Connect : compilation sans signature."
-            echo "SIGNING=no" >> "$CM_ENV"
-          fi
+          # Pas de fetch-signing-files : il exige la clé privée du certificat
+          # (CERTIFICATE_PRIVATE_KEY). ios_signing a déjà installé certificat + profil.
+          xcode-project use-profiles --project "$XCODE_PROJECT"
+          echo "SIGNING=yes" >> "$CM_ENV"
 
       # Compilation : avec ou sans signature selon les certificats.
       # Sans signature : .app compilé dans build/ios/Release-iphoneos/
