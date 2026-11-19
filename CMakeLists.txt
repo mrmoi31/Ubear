@@ -56,6 +56,8 @@ elseif(IOS_BUILD)
         get_filename_component(asset_dir ${rel} DIRECTORY)
         set_source_files_properties(${asset} PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${asset_dir}")
     endforeach()
+    # Catalog d'icônes : doit être dans la phase Resources pour être compilé par actool.
+    set_source_files_properties(${CMAKE_SOURCE_DIR}/ios/Assets.xcassets PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
     target_link_libraries(ubear PRIVATE raylib)
     target_compile_definitions(ubear PRIVATE PLATFORM_IOS)
     target_compile_options(ubear PRIVATE -Wall -Wno-format-security)
