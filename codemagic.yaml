@@ -41,6 +41,9 @@ workflows:
         BUNDLE_ID: com.ubear.game
         XCODE_PROJECT: build/ios/ubear.xcodeproj
         XCODE_SCHEME: ubear
+        # Apple ID de l'app (App Store Connect > Informations sur l'app).
+        # Sert à reprendre le dernier numéro de build TestFlight.
+        APP_STORE_APPLE_ID: "6836418432"
 
       # -----------------------------------------------------------------------
       # Signature iOS (optionnel)
@@ -97,6 +100,19 @@ workflows:
           brew list cmake >/dev/null 2>&1 || brew install cmake
           cmake --version
           xcodebuild -version
+
+      # NUMERO DE BUILD : TestFlight refuse un numéro déjà envoyé.
+      # On reprend le dernier numéro TestFlight et on ajoute 1, puis on l'écrit
+      # dans CFBundleVersion de ios/Info.plist AVANT que CMake ne génère le projet.
+      # La clé déclarée dans "integrations" donne l'accès à App Store Connect.
+      - name: Numéro de build
+        script: |
+          set -e
+          LATEST=$(app-store-connect get-latest-testflight-build-number "$APP_STORE_APPLE_ID") || {
+            echo "Impossible de lire le dernier numéro de build TestFlight"; exit 1; }
+          NEW=$((LATEST + 1))
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW" "$CM_BUILD_DIR/ios/Info.plist"
+          echo "Numéro de build : $LATEST -> $NEW"
 
       - name: Projet Xcode
         script: |
