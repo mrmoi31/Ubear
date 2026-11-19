@@ -50,7 +50,7 @@ elseif(IOS_BUILD)
         "-framework Security" m)
 
     file(GLOB_RECURSE UBEAR_ASSETS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/*)
-    add_executable(ubear MACOSX_BUNDLE ${GAME_SOURCES} ${UBEAR_ASSETS})
+    add_executable(ubear MACOSX_BUNDLE ${GAME_SOURCES} ${UBEAR_ASSETS} ${CMAKE_SOURCE_DIR}/ios/Assets.xcassets)
     foreach(asset ${UBEAR_ASSETS})
         file(RELATIVE_PATH rel ${CMAKE_SOURCE_DIR}/assets ${asset})
         get_filename_component(asset_dir ${rel} DIRECTORY)
@@ -68,7 +68,8 @@ elseif(IOS_BUILD)
         XCODE_ATTRIBUTE_IPHONEOS_DEPLOYMENT_TARGET "15.0"
         XCODE_ATTRIBUTE_SUPPORTED_PLATFORMS "iphoneos iphonesimulator"
         XCODE_ATTRIBUTE_SKIP_INSTALL "NO"
-        XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)")
+        XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)"
+        XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME "AppIcon")
 else()
     add_library(raylib STATIC ${RAYLIB_SOURCES} ${RL}/rglfw.c)
     target_compile_definitions(raylib PUBLIC PLATFORM_DESKTOP GRAPHICS_API_OPENGL_33)

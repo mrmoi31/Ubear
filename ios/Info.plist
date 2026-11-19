@@ -28,8 +28,8 @@
     <true/>
     <key>UIViewControllerBasedStatusBarAppearance</key>
     <false/>
-    <key>UILaunchStoryboardName</key>
-    <string></string>
+    <key>UILaunchScreen</key>
+    <dict/>
     <key>UIRequiredDeviceCapabilities</key>
     <array>
         <string>opengles-2</string>
