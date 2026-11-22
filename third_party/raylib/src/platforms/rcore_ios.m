@@ -210,11 +210,10 @@ void SetWindowOpacity(float opacity) { (void)opacity; }
 void SetWindowFocused(void) {}
 void *GetWindowHandle(void) { return (__bridge void *)g_view; }
 Vector2 GetWindowPosition(void) { return (Vector2){ 0.0f, 0.0f }; }
-Vector2 GetWindowScaleDPI(void)
-{
-    float s = g_view ? (float)g_view.contentScaleFactor : 1.0f;
-    return (Vector2){ s, s };
-}
+// Écran, framebuffer et touches sont déjà en pixels (IosBuildFramebuffer, IosSyncTouches).
+// rcore.c multiplie par ce facteur sur __APPLE__ (viewport, scissor...) : il doit rester 1,
+// sinon le rendu est agrandi x2/x3 et seul le coin haut-gauche est visible.
+Vector2 GetWindowScaleDPI(void) { return (Vector2){ 1.0f, 1.0f }; }
 int GetMonitorCount(void) { return 1; }
 int GetCurrentMonitor(void) { return 0; }
 Vector2 GetMonitorPosition(int monitor) { (void)monitor; return (Vector2){ 0.0f, 0.0f }; }
