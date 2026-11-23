@@ -73,7 +73,7 @@ bool save::load(SaveData& d)
         if      (key == "coins")           d.coins = atoi(val.c_str());
         else if (key == "musicVol")        d.musicVol = (float)atof(val.c_str());
         else if (key == "sfxVol")          d.sfxVol = (float)atof(val.c_str());
-        else if (key == "vibration")       d.vibration = atoi(val.c_str()) != 0;
+        else if (key == "vibration")       { int v = atoi(val.c_str()); d.vibration = (v >= 0 && v <= 2) ? v : 1; }
         else if (key == "lang")            d.lang = atoi(val.c_str());
         else if (key == "tutorialDone")    d.tutorialDone = atoi(val.c_str()) != 0;
         else if (key == "bestShiftCoins")  d.bestShiftCoins = atoi(val.c_str());
@@ -135,7 +135,7 @@ bool save::write(const SaveData& d)
     out << "\n";
     out << "musicVol=" << d.musicVol << "\n";
     out << "sfxVol=" << d.sfxVol << "\n";
-    out << "vibration=" << (d.vibration ? 1 : 0) << "\n";
+    out << "vibration=" << d.vibration << "\n";
     out << "lang=" << d.lang << "\n";
     out << "tutorialDone=" << (d.tutorialDone ? 1 : 0) << "\n";
     out << "bestShiftCoins=" << d.bestShiftCoins << "\n";
@@ -171,7 +171,7 @@ bool save::write(const SaveData& d)
 void save::erase(SaveData& d)
 {
     float mv = d.musicVol, sv = d.sfxVol;
-    bool vib = d.vibration;
+    int vib = d.vibration;
     int lang = d.lang;
     d = SaveData{};
     d.musicVol = mv; d.sfxVol = sv; d.vibration = vib; d.lang = lang;

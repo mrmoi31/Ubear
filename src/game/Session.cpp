@@ -1179,13 +1179,14 @@ void Session::drawHud()
         ui.text(tr(Str::Brake), c.x, c.y - 16, 32, WHITE, Align::Center);
     }
 
-    // alerte centrale
+    // alerte (plat froid, eau, météo…) : en bas de l'écran, au-dessus du frein
     if (alertT_ > 0.0f) {
         float a = std::min(1.0f, alertT_ / 0.4f);
         float sz = 52.0f;
-        float y = H * 0.33f - (1.0f - std::min(1.0f, (2.0f - alertT_) * 5.0f)) * 30.0f;
+        float hgt = ui.textBox(alertText_.c_str(), {40, 0, W - 80, 200}, sz, WHITE, Align::Center, false);
+        float bottom = s.upgrades[UP_BRAKES] > 0 ? brakeRect().y - 24.0f : H - 56.0f;
+        float y = bottom - hgt - 16.0f + (1.0f - std::min(1.0f, (2.0f - alertT_) * 5.0f)) * 30.0f;
         Rectangle box = {40, y, W - 80, 200};
-        float hgt = ui.textBox(alertText_.c_str(), box, sz, WHITE, Align::Center, false);
         ui.panel({60, y - 16, W - 120, hgt + 32}, Fade(Color{10, 20, 40, 255}, 0.45f * a), 0.4f);
         ui.textBox(alertText_.c_str(), {box.x + 2, box.y + 3, box.width, box.height}, sz, Fade(BLACK, 0.5f * a), Align::Center);
         ui.textBox(alertText_.c_str(), box, sz, Fade(alertColor_, a), Align::Center);

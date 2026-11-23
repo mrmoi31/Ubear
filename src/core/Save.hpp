@@ -16,7 +16,7 @@ struct SaveData {
     std::string equipped[COS_COUNT];        // id équipé par catégorie
     float musicVol = 0.6f;
     float sfxVol   = 1.0f;
-    bool  vibration = true;
+    int   vibration = 1;                    // 0 aucune, 1 toutes, 2 importantes seulement
     int   lang = 0;                         // 0 FR, 1 EN
     bool  tutorialDone = false;
     bool  storySeen = false;

@@ -138,6 +138,22 @@ static void IosSyncTouches(NSSet *touches, UIView *view)
 }
 @end
 
+// Retour haptique : kSystemSoundID_Vibrate dure ~400 ms quelle que soit la demande,
+// donc une poussée de patte faisait vibrer en continu. Durée demandée -> force du tap.
+void IosHaptic(int ms)
+{
+    static UIImpactFeedbackGenerator *gen[3];
+    int i = ms < 30 ? 0 : (ms < 100 ? 1 : 2);
+    if (gen[i] == nil) {
+        const UIImpactFeedbackStyle style[3] = {
+            UIImpactFeedbackStyleLight, UIImpactFeedbackStyleMedium, UIImpactFeedbackStyleHeavy
+        };
+        gen[i] = [[UIImpactFeedbackGenerator alloc] initWithStyle:style[i]];
+    }
+    [gen[i] impactOccurred];
+    [gen[i] prepare];
+}
+
 int IosOtherMusicPlaying(void)
 {
     AVAudioSession *session = [AVAudioSession sharedInstance];

@@ -695,9 +695,10 @@ void screenSettings(App& app)
             if (CheckCollisionPointRec(e.start, ui.toScreen({p.x, y + 20, p.width, 100}))) app.assets.playSfx(app.assets.coin);
     }
     y += 140;
-    if (ui.button({p.x + 40, y, p.width - 80, 90}, TextFormat("%s : %s", tr(Str::Vibration), s.vibration ? "ON" : "OFF"),
+    const char* vibLabel = s.vibration == 0 ? "OFF" : s.vibration == 2 ? L("Importantes", "Key only") : L("Toutes", "All");
+    if (ui.button({p.x + 40, y, p.width - 80, 90}, TextFormat("%s : %s", tr(Str::Vibration), vibLabel),
                   s.vibration ? pal::green : pal::grey, 36)) {
-        s.vibration = !s.vibration;
+        s.vibration = s.vibration == 1 ? 2 : s.vibration == 2 ? 0 : 1;   // Toutes -> Importantes -> OFF
         app.vibrate(80);
         app.persist();
     }

@@ -40,7 +40,9 @@ void App::applyAudio()
 
 void App::vibrate(int ms)
 {
-    if (save.vibration && !autopilot) platform::vibrate(ms);
+    // Mode 2 (importantes) : on saute les petits retours (patte, ramassage, départ de tournée).
+    if (save.vibration == 0 || autopilot || (save.vibration == 2 && ms < 50)) return;
+    platform::vibrate(ms);
 }
 
 void App::notify(const std::string& text)

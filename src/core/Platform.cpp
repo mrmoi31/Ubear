@@ -168,11 +168,10 @@ bool platform::allowGameMusic()
 
 #elif defined(PLATFORM_IOS)
 
-#include <AudioToolbox/AudioToolbox.h>
-
 extern "C" int IosOtherMusicPlaying(void);
+extern "C" void IosHaptic(int ms);   // rcore_ios.m
 
-void platform::vibrate(int) { AudioServicesPlaySystemSound(kSystemSoundID_Vibrate); }
+void platform::vibrate(int ms) { IosHaptic(ms); }
 void platform::shutdown() {}
 void platform::initAudioFocus() {}
 bool platform::allowGameMusic() { return IosOtherMusicPlaying() == 0; }
