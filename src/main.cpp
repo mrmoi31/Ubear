@@ -118,9 +118,51 @@ static void syncMusic(bool poll)
     }
 }
 
+// Rappels programmés quand le joueur quitte l'appli, annulés quand il revient.
+static void scheduleReminders(App& app)
+{
+    platform::cancelNotifications();
+    vitality::refresh(app.save);
+    int full = vitality::secondsToFull(app.save);
+    if (full > 0)
+        platform::scheduleNotification(1, full, "Ubear", L("Énergie au max ! Barnabé est prêt pour une nouvelle journée de livraisons.",
+                                                          "Energy full! Barnaby is ready for a new day of deliveries."));
+
+    static const char* const FR[] = {
+        "Pénélope a faim. Elle commence à regarder les livreurs concurrents.",
+        "Ton cadeau du jour t'attend. Barnabé a déjà chaussé ses rollers.",
+        "Gaston a du nouveau en rayon. Pas de remboursement, évidemment.",
+        "Le yéti attend sa commande. Il ne dira rien, mais il attend.",
+        "La banquise est calme aujourd'hui. Pour l'instant.",
+    };
+    static const char* const EN[] = {
+        "Penelope is hungry. She's starting to look at other couriers.",
+        "Your daily gift is waiting. Barnaby already has his skates on.",
+        "Gaston has new stock. No refunds, obviously.",
+        "The yeti is waiting for his order. He won't say a word, but he's waiting.",
+        "The ice floe is quiet today. For now.",
+    };
+    const int n = (int)(sizeof(FR) / sizeof(FR[0]));
+    // Un rappel par jour à 11 h, à partir de demain (le joueur vient de jouer), pendant 7 jours.
+    // shortcut: s'arrête après 7 jours sans ouvrir le jeu, pour ne pas harceler un joueur parti.
+    std::time_t now = std::time(nullptr);
+    for (int k = 1; k <= 7; k++) {
+        std::tm tm = *std::localtime(&now);
+        tm.tm_mday += k;
+        tm.tm_hour = 11; tm.tm_min = 0; tm.tm_sec = 0; tm.tm_isdst = -1;
+        long long at = (long long)std::mktime(&tm);
+        int line = tm.tm_yday % n;
+        platform::scheduleNotification(10 + k, at - (long long)now, "Ubear", L(FR[line], EN[line]));
+    }
+}
+
 static void onFocus(bool focused)
 {
     g_appFocused = focused;
+    if (g_app) {
+        if (focused) platform::cancelNotifications();
+        else scheduleReminders(*g_app);
+    }
     if (!g_app || !g_app->assets.audioReady) return;
     if (!focused) {
         if (g_app->session) g_app->session->pause();
@@ -285,6 +327,10 @@ static void bootGame(int argc, char **argv)
     app.ui.attach(&app.assets, &app.input);
     app.applyAudio();
     platform::initAudioFocus();
+    platform::cancelNotifications();      // le joueur est là : plus besoin des rappels
+    // À chaque lancement : rien ne s'affiche si c'est déjà accordé ; iOS ne demande qu'une fois,
+    // Android arrête de lui-même après deux refus.
+    platform::requestNotifications();
     syncMusic(true);
     app.screen = app.save.storySeen ? Screen::Menu : Screen::Story;
 

@@ -21,6 +21,7 @@ namespace vitality {
 void refresh(SaveData& d);
 void spend(SaveData& d);
 int  secondsToNext(const SaveData& d);
+int  secondsToFull(const SaveData& d);   // 0 si déjà pleine
 }
 
 namespace rewards {

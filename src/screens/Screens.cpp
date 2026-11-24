@@ -477,7 +477,10 @@ void screenShop(App& app)
     Ui& ui = app.ui;
     SaveData& s = app.save;
     background(app, false);
-    if (backButton(app)) { app.go(Screen::Menu); return; }
+    if (backButton(app)) {
+        if (!app.confirmBuy.empty()) app.confirmBuy.clear();   // retour ferme d'abord la confirmation
+        else { app.go(Screen::Menu); return; }
+    }
     coinsChip(app);
     title(app, tr(Str::Shop), cfg::SAFE_TOP + 100);
 
@@ -501,11 +504,53 @@ void screenShop(App& app)
     Rectangle t0 = {30, gp.y + gp.height + 20, tw, 70};
     Rectangle t1 = {t0.x + tw + 10, t0.y, tw, 70};
     Rectangle t2 = {t1.x + tw + 10, t0.y, tw, 70};
-    if (ui.button(t0, tr(Str::Equipment), app.shopTab == 0 ? pal::blue : pal::grey, 24)) { app.shopTab = 0; app.shopScroll = 0; }
-    if (ui.button(t1, tr(Str::Cosmetics), app.shopTab == 1 ? pal::blue : pal::grey, 24)) { app.shopTab = 1; app.shopScroll = 0; }
-    if (ui.button(t2, L("Offres", "Offers"), app.shopTab == 2 ? pal::gold : pal::grey, 24)) { app.shopTab = 2; app.shopScroll = 0; app.confirmOffer = -1; }
+    if (ui.button(t0, tr(Str::Equipment), app.shopTab == 0 ? pal::blue : pal::grey, 24)) { app.shopTab = 0; app.shopScroll = 0; app.confirmBuy.clear(); }
+    if (ui.button(t1, tr(Str::Cosmetics), app.shopTab == 1 ? pal::blue : pal::grey, 24)) { app.shopTab = 1; app.shopScroll = 0; app.confirmBuy.clear(); }
+    if (ui.button(t2, L("Offres", "Offers"), app.shopTab == 2 ? pal::gold : pal::grey, 24)) { app.shopTab = 2; app.shopScroll = 0; app.confirmOffer = -1; app.confirmBuy.clear(); }
 
     float top = t0.y + t0.height + 24;
+
+    // Achat à confirmer : un tap sur un article ne débite jamais directement.
+    if (!app.confirmBuy.empty()) {
+        const CosmeticDef* cd = findCosmetic(app.confirmBuy);
+        int up = (!cd && app.confirmBuy.rfind("up", 0) == 0) ? app.confirmBuy[2] - '0' : -1;
+        bool valid = cd ? !s.owned.count(cd->id) : (up >= 0 && up < UP_COUNT && s.upgrades[up] < 3);
+        if (!valid) {
+            app.confirmBuy.clear();
+        } else {
+            const char* name = cd ? tr(cd->name) : tr(UPGRADES[up].name);
+            int price = cd ? cd->price : UPGRADES[up].price[s.upgrades[up]];
+            DrawRectangle(0, 0, (int)ui.W + 1, (int)ui.H + 1, Color{6, 12, 28, 180});
+            Rectangle p = {50, ui.H * 0.24f, ui.W - 100, 480};
+            ui.panel(p, pal::panel, 0.05f);
+            ui.text(name, ui.W * 0.5f, p.y + 26, 36, pal::ink, Align::Center);
+            if (cd) drawCosmeticIcon(app, *cd, {ui.W * 0.5f, p.y + 150}, 150);
+            else ui.text(TextFormat("%s %d", tr(Str::Level), s.upgrades[up] + 1), ui.W * 0.5f, p.y + 130, 40, pal::soft, Align::Center);
+            ui.coinIcon({ui.W * 0.5f - 70, p.y + 268}, 22);
+            ui.text(TextFormat("%d", price), ui.W * 0.5f - 38, p.y + 242, 48, pal::ink);
+            if (ui.button({p.x + 40, p.y + 320, p.width - 80, 70}, L("Acheter", "Buy"), pal::green, 32)) {
+                if (s.coins >= price) {
+                    s.coins -= price;
+                    if (cd) {
+                        s.owned.insert(cd->id);
+                        s.equipped[cd->cat] = cd->id;
+                    } else {
+                        s.upgrades[up]++;
+                        app.notify(TextFormat("%s %s %d", name, tr(Str::Level), s.upgrades[up]));
+                    }
+                    app.assets.playSfx(app.assets.coin);
+                    app.vibrate(50);
+                    app.persist();
+                } else {
+                    app.notify(tr(Str::NotEnough));
+                }
+                app.confirmBuy.clear();
+            }
+            if (ui.button({p.x + 40, p.y + 400, p.width - 80, 64}, L("Annuler", "Cancel"), pal::grey, 28))
+                app.confirmBuy.clear();
+            return;
+        }
+    }
 
     if (app.shopTab == 0) {
         Rectangle area = {0, top, ui.W, ui.H - top - 20};
@@ -532,13 +577,8 @@ void screenShop(App& app)
                 bool can = s.coins >= price;
                 if (ui.button(br, TextFormat("%d", price), can ? pal::green : shade(pal::green, 0.7f), 36) && visibleIn(br, area)) {
                     if (can) {
-                        s.coins -= price;
-                        s.upgrades[i]++;
                         app.shopSelected = TextFormat("up%d", i);
-                        app.assets.playSfx(app.assets.coin);
-                        app.vibrate(50);
-                        app.persist();
-                        app.notify(TextFormat("%s %s %d", tr(u.name), tr(Str::Level), s.upgrades[i]));
+                        app.confirmBuy = app.shopSelected;
                     } else {
                         app.notify(tr(Str::NotEnough));
                     }
@@ -655,13 +695,12 @@ void screenShop(App& app)
             if (owned) {
                 s.equipped[d.cat] = d.id;
                 app.persist();
-            } else if (s.coins >= d.price) {
-                s.coins -= d.price;
+            } else if (d.price == 0) {           // gratuit : rien à confirmer
                 s.owned.insert(d.id);
                 s.equipped[d.cat] = d.id;
-                app.assets.playSfx(app.assets.coin);
-                app.vibrate(50);
                 app.persist();
+            } else if (s.coins >= d.price) {
+                app.confirmBuy = d.id;
             } else {
                 app.notify(tr(Str::NotEnough));
             }

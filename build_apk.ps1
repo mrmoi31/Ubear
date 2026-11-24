@@ -32,9 +32,10 @@ foreach ($abi in $abis) {
 # 2. Ressources + manifeste + assets + focus audio
 if (Test-Path $work) { Remove-Item -Recurse -Force $work }
 New-Item -ItemType Directory -Force "$work\res", "$work\classes" | Out-Null
-Run "$jdk\bin\javac.exe" @("--release", "8", "-classpath", $androidJar, "-d", "$work\classes",
-    "$root\android\java\com\ubear\game\AudioFocus.java")
-Run "$bt\d8.bat" @("--min-api", "24", "--output", $work, "$work\classes\com\ubear\game\AudioFocus.class")
+$javaSrc = @(Get-ChildItem "$root\android\java" -Recurse -Filter "*.java" | ForEach-Object { $_.FullName })
+Run "$jdk\bin\javac.exe" (@("--release", "8", "-classpath", $androidJar, "-d", "$work\classes") + $javaSrc)
+$javaCls = @(Get-ChildItem "$work\classes" -Recurse -Filter "*.class" | ForEach-Object { $_.FullName })
+Run "$bt\d8.bat" (@("--min-api", "24", "--lib", $androidJar, "--output", $work) + $javaCls)
 Get-ChildItem "$root\assets" -Recurse -Filter "ubear_save*.txt" | Remove-Item -Force
 $stage = "$work\assets-pack"
 New-Item -ItemType Directory -Force $stage | Out-Null

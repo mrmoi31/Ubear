@@ -48,6 +48,7 @@ struct App {
     AdSlot adSlot = AdSlot::None;
     float adTime = 0.0f;
     int   confirmOffer = -1;
+    std::string confirmBuy;          // achat boutique en attente : id cosmétique ou "upN"
 
     App();
     ~App();

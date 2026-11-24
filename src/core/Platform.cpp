@@ -124,6 +124,64 @@ void detachEnv(bool attached)
     android_app* app = GetAndroidApp();
     if (app && app->activity && app->activity->vm) app->activity->vm->DetachCurrentThread();
 }
+
+// FindClass ne voit pas les classes de l'appli depuis le thread natif : on passe par le ClassLoader.
+jclass loadAppClass(JNIEnv* env, jobject activity, const char* cls)
+{
+    jclass activityCls = env->GetObjectClass(activity);
+    jmethodID getLoader = env->GetMethodID(activityCls, "getClassLoader", "()Ljava/lang/ClassLoader;");
+    jobject loader = env->CallObjectMethod(activity, getLoader);
+    jclass loaderCls = env->FindClass("java/lang/ClassLoader");
+    jmethodID loadClass = env->GetMethodID(loaderCls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
+    jstring name = env->NewStringUTF(cls);
+    jclass local = (jclass)env->CallObjectMethod(loader, loadClass, name);
+    if (env->ExceptionCheck() || !local) { env->ExceptionClear(); return nullptr; }
+    return (jclass)env->NewGlobalRef(local);
+}
+
+jclass notifierClass = nullptr;
+
+// Appelle f(env, activity) avec la classe Notifier chargée.
+template <class F> void withNotifier(F f)
+{
+    bool attached = false;
+    JNIEnv* env = attachEnv(attached);
+    if (!env) return;
+    jobject activity = GetAndroidApp()->activity->clazz;
+    if (!notifierClass) notifierClass = loadAppClass(env, activity, "com.ubear.game.Notifier");
+    if (notifierClass) f(env, activity);
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    detachEnv(attached);
+}
+}
+
+void platform::requestNotifications()
+{
+    withNotifier([](JNIEnv* env, jobject activity) {
+        jmethodID m = env->GetStaticMethodID(notifierClass, "requestPermission", "(Landroid/app/Activity;)V");
+        if (m) env->CallStaticVoidMethod(notifierClass, m, activity);
+    });
+}
+
+void platform::scheduleNotification(int id, long long delaySec, const char* title, const char* text)
+{
+    withNotifier([&](JNIEnv* env, jobject activity) {
+        jmethodID m = env->GetStaticMethodID(notifierClass, "schedule",
+                                             "(Landroid/content/Context;IJLjava/lang/String;Ljava/lang/String;)V");
+        if (!m) return;
+        jstring jt = env->NewStringUTF(title), jx = env->NewStringUTF(text);
+        env->CallStaticVoidMethod(notifierClass, m, activity, (jint)id, (jlong)delaySec, jt, jx);
+        env->DeleteLocalRef(jt);
+        env->DeleteLocalRef(jx);
+    });
+}
+
+void platform::cancelNotifications()
+{
+    withNotifier([](JNIEnv* env, jobject activity) {
+        jmethodID m = env->GetStaticMethodID(notifierClass, "cancelAll", "(Landroid/content/Context;)V");
+        if (m) env->CallStaticVoidMethod(notifierClass, m, activity);
+    });
 }
 
 void platform::initAudioFocus()
@@ -134,19 +192,11 @@ void platform::initAudioFocus()
     android_app* app = GetAndroidApp();
     jobject activity = app->activity->clazz;
 
-    jclass activityCls = env->GetObjectClass(activity);
-    jmethodID getLoader = env->GetMethodID(activityCls, "getClassLoader", "()Ljava/lang/ClassLoader;");
-    jobject loader = env->CallObjectMethod(activity, getLoader);
-    jclass loaderCls = env->FindClass("java/lang/ClassLoader");
-    jmethodID loadClass = env->GetMethodID(loaderCls, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;");
-    jstring name = env->NewStringUTF("com.ubear.game.AudioFocus");
-    jclass local = (jclass)env->CallObjectMethod(loader, loadClass, name);
-    if (env->ExceptionCheck() || !local) {
-        env->ExceptionClear();
+    audioClass = loadAppClass(env, activity, "com.ubear.game.AudioFocus");
+    if (!audioClass) {
         detachEnv(attached);
         return;
     }
-    audioClass = (jclass)env->NewGlobalRef(local);
     jmethodID init = env->GetStaticMethodID(audioClass, "init", "(Landroid/content/Context;)V");
     audioAllows = env->GetStaticMethodID(audioClass, "allowsMusic", "()Z");
     if (init) env->CallStaticVoidMethod(audioClass, init, activity);
@@ -170,14 +220,26 @@ bool platform::allowGameMusic()
 
 extern "C" int IosOtherMusicPlaying(void);
 extern "C" void IosHaptic(int ms);   // rcore_ios.m
+extern "C" void IosNotifyRequest(void);
+extern "C" void IosNotifySchedule(int id, long long delaySec, const char* title, const char* text);
+extern "C" void IosNotifyCancelAll(void);
 
 void platform::vibrate(int ms) { IosHaptic(ms); }
+void platform::requestNotifications() { IosNotifyRequest(); }
+void platform::scheduleNotification(int id, long long delaySec, const char* title, const char* text)
+{
+    IosNotifySchedule(id, delaySec, title, text);
+}
+void platform::cancelNotifications() { IosNotifyCancelAll(); }
 void platform::shutdown() {}
 void platform::initAudioFocus() {}
 bool platform::allowGameMusic() { return IosOtherMusicPlaying() == 0; }
 
 #else
 
+void platform::requestNotifications() {}
+void platform::scheduleNotification(int, long long, const char*, const char*) {}
+void platform::cancelNotifications() {}
 void platform::vibrate(int) {}
 void platform::shutdown() {}
 void platform::initAudioFocus() {}

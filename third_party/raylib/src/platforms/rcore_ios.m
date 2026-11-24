@@ -7,6 +7,7 @@
 #import <OpenGLES/ES2/gl.h>
 #import <OpenGLES/ES2/glext.h>
 #import <QuartzCore/CAEAGLLayer.h>
+#import <UserNotifications/UserNotifications.h>
 #import <dlfcn.h>
 
 extern void ubear_ios_init(void);
@@ -152,6 +153,34 @@ void IosHaptic(int ms)
     }
     [gen[i] impactOccurred];
     [gen[i] prepare];
+}
+
+// Notifications locales (énergie pleine, rappel quotidien), appelées par Platform.cpp.
+void IosNotifyRequest(void)
+{
+    UNAuthorizationOptions opts = UNAuthorizationOptionAlert | UNAuthorizationOptionSound | UNAuthorizationOptionBadge;
+    [[UNUserNotificationCenter currentNotificationCenter] requestAuthorizationWithOptions:opts
+        completionHandler:^(BOOL granted, NSError *error) { (void)granted; (void)error; }];
+}
+
+void IosNotifySchedule(int nid, long long delaySec, const char *title, const char *text)
+{
+    UNMutableNotificationContent *c = [[UNMutableNotificationContent alloc] init];
+    c.title = [NSString stringWithUTF8String:title];
+    c.body = [NSString stringWithUTF8String:text];
+    c.sound = [UNNotificationSound defaultSound];
+    UNTimeIntervalNotificationTrigger *t =
+        [UNTimeIntervalNotificationTrigger triggerWithTimeInterval:(NSTimeInterval)(delaySec > 1 ? delaySec : 1) repeats:NO];
+    NSString *ident = [NSString stringWithFormat:@"ubear.%d", nid];
+    UNNotificationRequest *req = [UNNotificationRequest requestWithIdentifier:ident content:c trigger:t];
+    [[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:req withCompletionHandler:nil];
+}
+
+void IosNotifyCancelAll(void)
+{
+    UNUserNotificationCenter *center = [UNUserNotificationCenter currentNotificationCenter];
+    [center removeAllPendingNotificationRequests];
+    [center removeAllDeliveredNotifications];
 }
 
 int IosOtherMusicPlaying(void)

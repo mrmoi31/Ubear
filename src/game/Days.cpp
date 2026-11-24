@@ -91,6 +91,12 @@ int vitality::secondsToNext(const SaveData& d)
     return rem < 0 ? 0 : (int)rem;
 }
 
+int vitality::secondsToFull(const SaveData& d)
+{
+    if (d.energy >= cfg::ENERGY_MAX || d.energyAt <= 0) return 0;
+    return secondsToNext(d) + (cfg::ENERGY_MAX - d.energy - 1) * cfg::ENERGY_REGEN_SEC;
+}
+
 bool rewards::ready(const SaveData& d) { return d.rewardDate != challenges::today(); }
 
 static int nextStreak(const SaveData& d)

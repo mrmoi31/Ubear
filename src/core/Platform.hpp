@@ -5,6 +5,11 @@ namespace platform {
 void vibrate(int milliseconds);
 void shutdown();
 
+// Notifications locales (programmées sur l'appareil, sans serveur).
+void requestNotifications();      // autorisation : Android 13+ et iOS
+void scheduleNotification(int id, long long delaySec, const char* title, const char* text); // id 1..31
+void cancelNotifications();       // annule celles prévues et efface celles affichées
+
 // Faux si une autre appli joue de la musique (Spotify, Deezer, appel…).
 void initAudioFocus();
 bool allowGameMusic();
