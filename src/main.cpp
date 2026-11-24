@@ -1,8 +1,10 @@
 // UBear — « Livré chaud, ou c'est l'ours qui paie. »
 #include "App.hpp"
+#include "core/Analytics.hpp"
 #include "core/Config.hpp"
 #include "core/Locale.hpp"
 #include "core/Platform.hpp"
+#include "game/Catalog.hpp"
 #include "game/Challenges.hpp"
 #include "game/Days.hpp"
 #include "game/Session.hpp"
@@ -60,10 +62,20 @@ void App::startShift()
             int h = secs / 3600, m = (secs % 3600) / 60;
             notify(TextFormat(L("Barnabé dort encore. Énergie dans %dh%02d.",
                                 "Barnaby is still asleep. Energy in %dh%02d."), h, m));
+            analytics::track("energy_blocked", {analytics::num("wait_s", secs)});
             return;
         }
         vitality::spend(save);
         persist();
+        analytics::track("shift_start", {
+            analytics::num("day", save.day), analytics::num("energy_left", save.energy),
+            analytics::num("up_skates", save.upgrades[UP_SKATES]), analytics::num("up_brakes", save.upgrades[UP_BRAKES]),
+            analytics::num("up_gps", save.upgrades[UP_GPS]), analytics::num("up_bag", save.upgrades[UP_BAG]),
+            analytics::num("up_anchor", save.upgrades[UP_ANCHOR]),
+            analytics::str("skin", save.equipped[COS_SKIN]), analytics::str("hat", save.equipped[COS_HAT]),
+            analytics::str("bag", save.equipped[COS_BAG]), analytics::str("skate", save.equipped[COS_SKATE]),
+            analytics::str("trail", save.equipped[COS_TRAIL]),
+        });
     }
     session = std::make_unique<Session>(*this);
     go(Screen::Game);
@@ -74,6 +86,17 @@ void App::finishShift()
     lastResult = session->result();
     session.reset();
     go(Screen::Results);
+    const ShiftResult& r = lastResult;
+    analytics::track("shift_end", {
+        analytics::num("day", r.day), analytics::num("duration_s", (int)r.duration),
+        analytics::num("deliveries", r.deliveries), analytics::num("quota", r.quota),
+        analytics::flag("quota_met", r.quotaMet), analytics::num("failed", r.failed),
+        analytics::num("coins_earned", r.coins), analytics::num("best_streak", r.bestStreak),
+        analytics::num("regulars", r.regulars), analytics::num("challenges", r.challenges),
+        analytics::num("blizzards", r.blizzards), analytics::num("aurora_deliveries", r.auroraDeliveries),
+        analytics::flag("time_up", r.timeUp), analytics::flag("quit", r.quit), analytics::flag("record", r.record),
+    });
+    analytics::flush();
     if (!autopilot && !save.adsRemoved) beginAd(AdSlot::EndShift);
 }
 
@@ -85,6 +108,9 @@ void App::beginAd(AdSlot slot)
 
 void App::finishAd()
 {
+    static const char* const SLOT[] = {"none", "end_shift", "energy", "gold"};
+    if (adSlot != AdSlot::None)
+        analytics::track("ad_watched", {analytics::str("placement", SLOT[(int)adSlot]), analytics::num("seconds", (int)adTime)});
     offers::sync(save);
     if (adSlot == AdSlot::Energy && offers::grantEnergyAd(save))
         notify(L("+5 journées.", "+5 days."));
@@ -159,6 +185,7 @@ static void scheduleReminders(App& app)
 static void onFocus(bool focused)
 {
     g_appFocused = focused;
+    analytics::foreground(focused);
     if (g_app) {
         if (focused) platform::cancelNotifications();
         else scheduleReminders(*g_app);
@@ -197,6 +224,8 @@ struct SelfTest {
         int f = frame;
         if (f == 1) { app.save = SaveData{}; app.save.applyDefaults(); app.save.coins = 1234; app.storyPage = 0; app.go(Screen::Story); }
         if (f == 30) app.storyPage = 2;
+        // Statistiques : le lot affiché en console doit rester du JSON valide (vérifié hors du jeu).
+        if (f == 2) analytics::track("selftest_escape", {analytics::str("text", "guillemet\" antislash\\ ligne\n tab\t é")});
         if (f == 60) app.storyPage = 5;
         if (f == 90) app.go(Screen::Menu);
         if (f == 120) { app.go(Screen::Shop); app.shopTab = 0; }
@@ -322,6 +351,7 @@ static void bootGame(int argc, char **argv)
     platform::setFocusCallback(onFocus);
     save::load(app.save);
     setLang((Lang)app.save.lang);
+    analytics::start(app.save);
     challenges::refresh(app.save);
     app.assets.load();
     app.ui.attach(&app.assets, &app.input);
@@ -345,6 +375,7 @@ static void shutdownGame()
     App &app = g_host->app;
     save::write(app.save);
     app.session.reset();
+    analytics::foreground(false);   // fin de session + envoi
     app.assets.unload();
     platform::shutdown();
     g_app = nullptr;

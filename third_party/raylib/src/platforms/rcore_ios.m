@@ -183,6 +183,51 @@ void IosNotifyCancelAll(void)
     [center removeAllDeliveredNotifications];
 }
 
+// Statistiques : lot écrit dans Application Support/telemetry puis posté sur une file série.
+// Un lot n'est supprimé qu'une fois accepté (ou refusé en 4xx) ; sans réseau il repart au prochain envoi.
+void IosTelemetrySend(const char *url, const char *body)
+{
+    static dispatch_queue_t queue;
+    static dispatch_once_t once;
+    static unsigned seq = 0;
+    dispatch_once(&once, ^{ queue = dispatch_queue_create("com.ubear.telemetry", DISPATCH_QUEUE_SERIAL); });
+
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *base = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *dir = [base stringByAppendingPathComponent:@"telemetry"];
+    [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    long long ms = (long long)([[NSDate date] timeIntervalSince1970] * 1000.0);
+    NSString *name = [NSString stringWithFormat:@"%013lld_%04u.json", ms, seq++ % 10000];
+    NSData *data = [NSData dataWithBytes:body length:strlen(body)];
+    if (![data writeToFile:[dir stringByAppendingPathComponent:name] atomically:YES]) return;
+    NSURL *target = [NSURL URLWithString:[NSString stringWithUTF8String:url]];
+    if (target == nil) return;
+
+    dispatch_async(queue, ^{
+        NSArray *files = [[fm contentsOfDirectoryAtPath:dir error:nil] sortedArrayUsingSelector:@selector(compare:)];
+        NSInteger drop = (NSInteger)files.count - 200;   // hors ligne longtemps : on garde les 200 plus récents
+        for (NSString *f in files) {
+            NSString *path = [dir stringByAppendingPathComponent:f];
+            if (drop-- > 0) { [fm removeItemAtPath:path error:nil]; continue; }
+            NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:target];
+            req.HTTPMethod = @"POST";
+            req.timeoutInterval = 10;
+            [req setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+            req.HTTPBody = [NSData dataWithContentsOfFile:path];
+            __block NSInteger code = -1;
+            dispatch_semaphore_t done = dispatch_semaphore_create(0);
+            [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d, NSURLResponse *r, NSError *e) {
+                (void)d;
+                if (e == nil && [r isKindOfClass:[NSHTTPURLResponse class]]) code = ((NSHTTPURLResponse *)r).statusCode;
+                dispatch_semaphore_signal(done);
+            }] resume];
+            dispatch_semaphore_wait(done, DISPATCH_TIME_FOREVER);
+            if (code >= 200 && code < 500) [fm removeItemAtPath:path error:nil];
+            else break;
+        }
+    });
+}
+
 int IosOtherMusicPlaying(void)
 {
     AVAudioSession *session = [AVAudioSession sharedInstance];

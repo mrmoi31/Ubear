@@ -10,6 +10,10 @@ void requestNotifications();      // autorisation : Android 13+ et iOS
 void scheduleNotification(int id, long long delaySec, const char* title, const char* text); // id 1..31
 void cancelNotifications();       // annule celles prévues et efface celles affichées
 
+// Statistiques : le lot est écrit sur disque puis envoyé (POST JSON) en tâche de fond,
+// renvoyé plus tard si le réseau manque. PC : affiché dans la console.
+void sendAnalytics(const char* url, const char* body);
+
 // Faux si une autre appli joue de la musique (Spotify, Deezer, appel…).
 void initAudioFocus();
 bool allowGameMusic();

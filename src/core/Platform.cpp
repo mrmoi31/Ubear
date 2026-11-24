@@ -1,5 +1,8 @@
 #include "Platform.hpp"
 
+#include <cstdio>
+#include <cstring>
+
 static platform::FocusCallback g_focusCb = nullptr;
 
 void platform::setFocusCallback(FocusCallback cb) { g_focusCb = cb; }
@@ -140,19 +143,22 @@ jclass loadAppClass(JNIEnv* env, jobject activity, const char* cls)
 }
 
 jclass notifierClass = nullptr;
+jclass telemetryClass = nullptr;
 
-// Appelle f(env, activity) avec la classe Notifier chargée.
-template <class F> void withNotifier(F f)
+// Appelle f(env, activity) avec la classe Java `name` chargée (mise en cache dans `cls`).
+template <class F> void withAppClass(jclass& cls, const char* name, F f)
 {
     bool attached = false;
     JNIEnv* env = attachEnv(attached);
     if (!env) return;
     jobject activity = GetAndroidApp()->activity->clazz;
-    if (!notifierClass) notifierClass = loadAppClass(env, activity, "com.ubear.game.Notifier");
-    if (notifierClass) f(env, activity);
+    if (!cls) cls = loadAppClass(env, activity, name);
+    if (cls) f(env, activity);
     if (env->ExceptionCheck()) env->ExceptionClear();
     detachEnv(attached);
 }
+
+template <class F> void withNotifier(F f) { withAppClass(notifierClass, "com.ubear.game.Notifier", f); }
 }
 
 void platform::requestNotifications()
@@ -181,6 +187,22 @@ void platform::cancelNotifications()
     withNotifier([](JNIEnv* env, jobject activity) {
         jmethodID m = env->GetStaticMethodID(notifierClass, "cancelAll", "(Landroid/content/Context;)V");
         if (m) env->CallStaticVoidMethod(notifierClass, m, activity);
+    });
+}
+
+void platform::sendAnalytics(const char* url, const char* body)
+{
+    withAppClass(telemetryClass, "com.ubear.game.Telemetry", [&](JNIEnv* env, jobject activity) {
+        jmethodID m = env->GetStaticMethodID(telemetryClass, "send", "(Landroid/content/Context;Ljava/lang/String;[B)V");
+        if (!m) return;
+        // Octets bruts : NewStringUTF n'accepte pas tout l'UTF-8 standard (emoji).
+        jsize n = (jsize)std::strlen(body);
+        jbyteArray data = env->NewByteArray(n);
+        env->SetByteArrayRegion(data, 0, n, (const jbyte*)body);
+        jstring ju = env->NewStringUTF(url);
+        env->CallStaticVoidMethod(telemetryClass, m, activity, ju, data);
+        env->DeleteLocalRef(ju);
+        env->DeleteLocalRef(data);
     });
 }
 
@@ -223,6 +245,9 @@ extern "C" void IosHaptic(int ms);   // rcore_ios.m
 extern "C" void IosNotifyRequest(void);
 extern "C" void IosNotifySchedule(int id, long long delaySec, const char* title, const char* text);
 extern "C" void IosNotifyCancelAll(void);
+extern "C" void IosTelemetrySend(const char* url, const char* body);
+
+void platform::sendAnalytics(const char* url, const char* body) { IosTelemetrySend(url, body); }
 
 void platform::vibrate(int ms) { IosHaptic(ms); }
 void platform::requestNotifications() { IosNotifyRequest(); }
@@ -240,6 +265,7 @@ bool platform::allowGameMusic() { return IosOtherMusicPlaying() == 0; }
 void platform::requestNotifications() {}
 void platform::scheduleNotification(int, long long, const char*, const char*) {}
 void platform::cancelNotifications() {}
+void platform::sendAnalytics(const char*, const char* body) { std::printf("[analytics] %s\n", body); std::fflush(stdout); }
 void platform::vibrate(int) {}
 void platform::shutdown() {}
 void platform::initAudioFocus() {}

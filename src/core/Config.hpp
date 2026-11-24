@@ -171,4 +171,10 @@ constexpr float SAFE_TOP = 56.0f;                         // marge pour encoche 
 constexpr const char* SAVE_FILE = "ubear_save.txt";
 constexpr const char* VERSION   = "1.0.0";
 
+// ---- Statistiques joueurs (PostHog, hébergement UE) -------------------------
+// Clé "Project API key" (phc_...) de PostHog > Project settings. Clé vide = rien n'est envoyé.
+// Cette clé ne permet que d'écrire des événements : elle peut être dans l'appli.
+constexpr const char* ANALYTICS_URL = "https://eu.i.posthog.com/batch/";
+constexpr const char* ANALYTICS_KEY = "";
+
 } // namespace cfg

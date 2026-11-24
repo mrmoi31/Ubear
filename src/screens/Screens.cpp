@@ -1,4 +1,5 @@
 #include "Screens.hpp"
+#include "../core/Analytics.hpp"
 #include "../core/Config.hpp"
 #include "../core/Locale.hpp"
 #include "../game/Bear.hpp"
@@ -254,6 +255,7 @@ void screenMenu(App& app)
         if (ui.button(g, TextFormat(L("Cadeau +%d", "Gift +%d"), gift), pal::gold, 28)) {
             int got = rewards::claim(app.save);
             app.persist();
+            analytics::track("daily_reward", {analytics::num("coins", got), analytics::num("streak", app.save.rewardStreak)});
             app.assets.playSfx(app.assets.coin);
             app.notify(TextFormat(L("Jour %d : +%d pièces. À demain !", "Day %d: +%d coins. See you tomorrow!"),
                                   app.save.rewardStreak, got));
@@ -531,11 +533,17 @@ void screenShop(App& app)
             if (ui.button({p.x + 40, p.y + 320, p.width - 80, 70}, L("Acheter", "Buy"), pal::green, 32)) {
                 if (s.coins >= price) {
                     s.coins -= price;
+                    static const char* const CAT[COS_COUNT] = {"skin", "hat", "bag", "skate", "trail"};
+                    static const char* const UP[UP_COUNT] = {"skates", "brakes", "gps", "bag", "anchor"};
                     if (cd) {
                         s.owned.insert(cd->id);
                         s.equipped[cd->cat] = cd->id;
+                        analytics::track("purchase_cosmetic", {analytics::str("item", cd->id), analytics::str("category", CAT[cd->cat]),
+                                                               analytics::num("price", price), analytics::num("coins_left", s.coins)});
                     } else {
                         s.upgrades[up]++;
+                        analytics::track("purchase_upgrade", {analytics::str("upgrade", UP[up]), analytics::num("level", s.upgrades[up]),
+                                                              analytics::num("price", price), analytics::num("coins_left", s.coins)});
                         app.notify(TextFormat("%s %s %d", name, tr(Str::Level), s.upgrades[up]));
                     }
                     app.assets.playSfx(app.assets.coin);
@@ -601,6 +609,8 @@ void screenShop(App& app)
             ui.text(o.price, ui.W * 0.5f, p.y + 90, 48, pal::blue, Align::Center);
             if (ui.button({p.x + 40, p.y + 160, p.width - 80, 70}, L("Confirmer", "Confirm"), pal::green, 32)) {
                 if (offers::buy(s, app.confirmOffer)) {
+                    analytics::track("iap_purchase", {analytics::str("sku", o.sku), analytics::str("price", o.price),
+                                                      analytics::num("coins", o.coins), analytics::flag("remove_ads", o.removeAds)});
                     app.persist();
                     app.notify(o.removeAds ? L("Pubs retirées.", "Ads removed.") : L("Pièces ajoutées.", "Coins added."));
                 }
@@ -721,7 +731,7 @@ void screenSettings(App& app)
     if (backButton(app)) { app.persist(); app.go(Screen::Menu); return; }
     title(app, tr(Str::Settings), cfg::SAFE_TOP + 110);
 
-    Rectangle p = {40, cfg::SAFE_TOP + 200, ui.W - 80, 760};
+    Rectangle p = {40, cfg::SAFE_TOP + 200, ui.W - 80, 830};
     ui.panel(p, pal::panel, 0.08f);
     float y = p.y + 40;
     ui.text(tr(Str::Music), p.x + 40, y, 34, pal::ink);
@@ -741,20 +751,26 @@ void screenSettings(App& app)
         app.vibrate(80);
         app.persist();
     }
-    y += 110;
+    y += 100;
+    if (ui.button({p.x + 40, y, p.width - 80, 90}, TextFormat("%s : %s", L("Statistiques", "Statistics"), s.analytics ? "ON" : "OFF"),
+                  s.analytics ? pal::green : pal::grey, 36)) {
+        analytics::setEnabled(!s.analytics);
+        app.persist();
+    }
+    y += 100;
     if (ui.button({p.x + 40, y, p.width - 80, 90}, tr(Str::Language), pal::blue, 36)) {
         s.lang = 1 - s.lang;
         setLang((Lang)s.lang);
         app.persist();
     }
-    y += 110;
+    y += 100;
     if (ui.button({p.x + 40, y, p.width - 80, 90}, L("Revoir l'histoire", "Replay the story"), pal::purple, 36)) {
         app.storyPage = 0;
         app.storyReturn = Screen::Settings;
         app.go(Screen::Story);
         return;
     }
-    y += 110;
+    y += 100;
     if (ui.button({p.x + 40, y, p.width - 80, 90}, app.confirmReset ? tr(Str::ConfirmReset) : tr(Str::ResetSave), pal::red, 34)) {
         if (app.confirmReset) {
             save::erase(s);
@@ -766,7 +782,7 @@ void screenSettings(App& app)
             app.confirmReset = true;
         }
     }
-    ui.text(TextFormat("UBear v%s", cfg::VERSION), ui.W * 0.5f, ui.H - 70, 26, Fade(pal::ink, 0.6f), Align::Center);
+    ui.text(TextFormat("UBear v%s", cfg::VERSION), ui.W * 0.5f, std::max(ui.H - 70, p.y + p.height + 16), 26, Fade(pal::ink, 0.6f), Align::Center);
 }
 
 // ---------------------------------------------------------------------------

@@ -1,6 +1,7 @@
 #include "Session.hpp"
 #include "Catalog.hpp"
 #include "Customers.hpp"
+#include "../core/Analytics.hpp"
 #include "../core/Config.hpp"
 #include "../core/Locale.hpp"
 
@@ -313,6 +314,8 @@ void Session::deliver()
     rep.heatLeft = cur().heat; rep.coins = coins; rep.streak = streak_;
     for (auto& done : challenges::onDelivery(s, rep)) {
         res_.challenges++;
+        analytics::track("challenge_completed", {analytics::num("slot", done.slot), analytics::num("reward", done.reward),
+                                                 analytics::flag("all_bonus", done.allBonus)});
         if (done.allBonus) {
             toast(L("Les 3 défis du jour !", "All 3 daily challenges!"),
                   TextFormat(L("Gaston est impressionné. Bonus +%d pièces.", "Gaston is impressed. Bonus +%d coins."), done.reward),
@@ -350,6 +353,7 @@ void Session::fail()
 void Session::finishTutorial()
 {
     if (tuto_ < 0) return;
+    analytics::track("tutorial_done", {analytics::num("step", tuto_)});   // étape atteinte (passé tôt = petit nombre)
     tuto_ = -1;
     app_.save.tutorialDone = true;
     save::write(app_.save);
@@ -1282,5 +1286,5 @@ void Session::drawPause()
     }
 
     if (ui.button({p.x + 60, p.y + p.height - 290, p.width - 120, 100}, tr(Str::Resume), pal::blue, 44)) paused_ = false;
-    if (ui.button({p.x + 60, p.y + p.height - 160, p.width - 120, 100}, tr(Str::EndShift), pal::red, 40)) endShift();
+    if (ui.button({p.x + 60, p.y + p.height - 160, p.width - 120, 100}, tr(Str::EndShift), pal::red, 40)) { res_.quit = true; endShift(); }
 }

@@ -16,6 +16,7 @@ struct ShiftResult {
     int   regulars = 0, challenges = 0, blizzards = 0, auroraDeliveries = 0;
     int   day = 1, quota = 3;
     bool  record = false, quotaMet = false, timeUp = false;
+    bool  quit = false;                 // journée arrêtée depuis la pause
     float duration = 0.0f;
 };
 
