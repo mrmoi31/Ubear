@@ -123,6 +123,41 @@ void App::finishAd()
     adTime = 0.0f;
 }
 
+// Réponses du store (achats intégrés), lues à chaque image.
+static void pollPurchases(App& app)
+{
+    platform::IapEvent e;
+    while (platform::iapPoll(e)) {
+        int idx = -1;
+        for (int i = 0; i < offers::storeCount(); i++)
+            if (e.sku == offers::store(i).sku) idx = i;
+        if (e.kind == platform::IapEvent::Price) {
+            // espaces insécables (« 3,99 € ») absents de la police
+            for (const char* nbsp : {"\xC2\xA0", "\xE2\x80\xAF"})
+                for (size_t at; (at = e.data.find(nbsp)) != std::string::npos;) e.data.replace(at, std::strlen(nbsp), " ");
+            if (idx >= 0) app.iapPrices[e.sku] = e.data;
+        } else if (e.kind == platform::IapEvent::Pending) {
+            app.notify(L("Paiement en attente : tu seras crédité une fois validé.", "Payment pending: you'll get it once approved."));
+        } else if (e.kind == platform::IapEvent::Failed) {
+            if (e.data != "cancel") app.notify(L("Achat impossible pour le moment.", "Purchase unavailable right now."));
+        } else if (idx >= 0) {   // Purchased
+            const StoreOffer& o = offers::store(idx);
+            if (offers::buy(app.save, idx)) {   // faux si déjà livré (pubs déjà retirées)
+                auto price = app.iapPrices.find(o.sku);
+                analytics::track("iap_purchase", {analytics::str("sku", o.sku),
+                                                  analytics::str("price", price != app.iapPrices.end() ? price->second : o.price),
+                                                  analytics::num("coins", o.coins), analytics::flag("remove_ads", o.removeAds)});
+                app.persist();
+                app.assets.playSfx(app.assets.coin);
+                app.notify(o.removeAds ? L("Pubs retirées. Merci !", "Ads removed. Thank you!")
+                                       : TextFormat(L("+%d pièces. Merci !", "+%d coins. Thank you!"), o.coins));
+            }
+            // Seulement après la sauvegarde : si l'appli meurt avant, le store redonnera l'achat.
+            platform::iapFinish(e.data, !o.removeAds);
+        }
+    }
+}
+
 static bool g_appFocused = true;
 static bool g_musicOn = false;
 static float g_musicPoll = 1.0f;
@@ -222,13 +257,20 @@ struct SelfTest {
     void before(App& app)
     {
         int f = frame;
-        if (f == 1) { app.save = SaveData{}; app.save.applyDefaults(); app.save.coins = 1234; app.storyPage = 0; app.go(Screen::Story); }
+        if (f == 1) { app.save = SaveData{}; app.save.applyDefaults(); app.save.coins = 1234; app.save.consentAsked = true; app.save.analytics = true; app.storyPage = 0; app.go(Screen::Story); }
+        if (f == 4) app.save.consentAsked = false;   // capture de l'écran d'accord
+        if (f == 8) app.save.consentAsked = true;
         if (f == 30) app.storyPage = 2;
         // Statistiques : le lot affiché en console doit rester du JSON valide (vérifié hors du jeu).
         if (f == 2) analytics::track("selftest_escape", {analytics::str("text", "guillemet\" antislash\\ ligne\n tab\t é")});
         if (f == 60) app.storyPage = 5;
         if (f == 90) app.go(Screen::Menu);
-        if (f == 120) { app.go(Screen::Shop); app.shopTab = 0; }
+        if (f == 120) { app.go(Screen::Shop); app.shopTab = 2; }
+        // Achat intégré (store simulé sur PC) : +250 pièces après passage par pollPurchases
+        static int coinsBefore = 0;
+        if (f == 124) { coinsBefore = app.save.coins; platform::iapBuy("coins_small"); }
+        if (f == 127) TraceLog(LOG_WARNING, "SELFTEST: achat coins_small %s", app.save.coins == coinsBefore + 250 ? "OK" : "KO");
+        if (f == 130) app.shopTab = 0;
         if (f == 150) {
             app.shopTab = 1; app.shopCat = 0;
             for (const char* id : {"skin_panda", "skin_marron", "hat_couronne", "bag_rouge", "skate_or", "trail_rainbow"}) app.save.owned.insert(id);
@@ -267,7 +309,7 @@ struct SelfTest {
     void after(App& app)
     {
         static const struct { int f; const char* n; } shots[] = {
-            {20, "01_histoire"}, {50, "02_histoire_commandes"}, {80, "03_histoire_clients"}, {110, "04_menu"},
+            {6, "00_accord"}, {20, "01_histoire"}, {50, "02_histoire_commandes"}, {80, "03_histoire_clients"}, {110, "04_menu"}, {126, "05_offres"},
             {140, "05_boutique_equipement"}, {156, "06_pelages"}, {160, "06_chapeaux"}, {168, "06_sacs"}, {178, "06_rollers"}, {179, "06_trainees"},
             {200, "07_carnet_clients"},
             {440, "18_hub"}, {480, "19_pingouin"}, {520, "20_morse"}, {560, "21_renard"}, {600, "22_yeti"}, {640, "23_phoques"},
@@ -352,6 +394,12 @@ static void bootGame(int argc, char **argv)
     save::load(app.save);
     setLang((Lang)app.save.lang);
     analytics::start(app.save);
+    {
+        const char* skus[16];
+        int n = std::min(offers::storeCount(), 16);
+        for (int i = 0; i < n; i++) skus[i] = offers::store(i).sku;
+        platform::iapStart(skus, n);
+    }
     challenges::refresh(app.save);
     app.assets.load();
     app.ui.attach(&app.assets, &app.input);
@@ -400,6 +448,7 @@ static void frameGame()
         app.input.consumeAll();
         if (close) app.finishAd();
     }
+    pollPurchases(app);
     app.ui.beginFrame();
     g_musicPoll += dt;
     if (g_musicPoll >= 0.4f) { g_musicPoll = 0.0f; syncMusic(false); }
@@ -415,7 +464,8 @@ static void frameGame()
     } else {
         ClearBackground(pal::bg);
         app.ui.begin();
-        switch (app.screen) {
+        if (!app.save.consentAsked) screenConsent(app);   // premier lancement : accord avant tout le reste
+        else switch (app.screen) {
         case Screen::Story:      screenStory(app); break;
         case Screen::Menu:       screenMenu(app); break;
         case Screen::Shop:       screenShop(app); break;

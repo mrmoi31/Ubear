@@ -2,6 +2,7 @@
 #include "../core/Analytics.hpp"
 #include "../core/Config.hpp"
 #include "../core/Locale.hpp"
+#include "../core/Platform.hpp"
 #include "../game/Bear.hpp"
 #include "../game/Catalog.hpp"
 #include "../game/Challenges.hpp"
@@ -508,7 +509,7 @@ void screenShop(App& app)
     Rectangle t2 = {t1.x + tw + 10, t0.y, tw, 70};
     if (ui.button(t0, tr(Str::Equipment), app.shopTab == 0 ? pal::blue : pal::grey, 24)) { app.shopTab = 0; app.shopScroll = 0; app.confirmBuy.clear(); }
     if (ui.button(t1, tr(Str::Cosmetics), app.shopTab == 1 ? pal::blue : pal::grey, 24)) { app.shopTab = 1; app.shopScroll = 0; app.confirmBuy.clear(); }
-    if (ui.button(t2, L("Offres", "Offers"), app.shopTab == 2 ? pal::gold : pal::grey, 24)) { app.shopTab = 2; app.shopScroll = 0; app.confirmOffer = -1; app.confirmBuy.clear(); }
+    if (ui.button(t2, L("Offres", "Offers"), app.shopTab == 2 ? pal::gold : pal::grey, 24)) { app.shopTab = 2; app.shopScroll = 0; app.confirmBuy.clear(); }
 
     float top = t0.y + t0.height + 24;
 
@@ -600,26 +601,11 @@ void screenShop(App& app)
 
     if (app.shopTab == 2) {
         offers::sync(s);
-        if (app.confirmOffer >= 0) {
-            const StoreOffer& o = offers::store(app.confirmOffer);
-            DrawRectangle(0, 0, (int)ui.W + 1, (int)ui.H + 1, Color{6, 12, 28, 180});
-            Rectangle p = {50, ui.H * 0.32f, ui.W - 100, 340};
-            ui.panel(p, pal::panel, 0.05f);
-            ui.text(L(o.nameFr, o.nameEn), ui.W * 0.5f, p.y + 30, 36, pal::ink, Align::Center);
-            ui.text(o.price, ui.W * 0.5f, p.y + 90, 48, pal::blue, Align::Center);
-            if (ui.button({p.x + 40, p.y + 160, p.width - 80, 70}, L("Confirmer", "Confirm"), pal::green, 32)) {
-                if (offers::buy(s, app.confirmOffer)) {
-                    analytics::track("iap_purchase", {analytics::str("sku", o.sku), analytics::str("price", o.price),
-                                                      analytics::num("coins", o.coins), analytics::flag("remove_ads", o.removeAds)});
-                    app.persist();
-                    app.notify(o.removeAds ? L("Pubs retirées.", "Ads removed.") : L("Pièces ajoutées.", "Coins added."));
-                }
-                app.confirmOffer = -1;
-            }
-            if (ui.button({p.x + 40, p.y + 244, p.width - 80, 64}, L("Annuler", "Cancel"), pal::grey, 28))
-                app.confirmOffer = -1;
-            return;
-        }
+        // Paiement réel : la fenêtre du store sert de confirmation, le crédit arrive par pollPurchases (main.cpp).
+        auto price = [&](const StoreOffer& o) {
+            auto it = app.iapPrices.find(o.sku);
+            return it != app.iapPrices.end() ? it->second.c_str() : o.price;   // prix du store, sinon prix indicatif
+        };
         float y = top;
         auto card = [&](const char* title, const char* sub, const char* action, Color col) -> bool {
             Rectangle r = {30, y, ui.W - 60, 118};
@@ -631,8 +617,9 @@ void screenShop(App& app)
             return hit;
         };
         if (s.adsRemoved) card(L("Pubs de fin de journée", "End-of-day ads"), L("Déjà retirées.", "Already removed."), L("Actif", "On"), pal::green);
-        else if (card(L("Supprimer les pubs", "Remove ads"), L("Plus de pub forcée en fin de journée.", "No forced ad at the end of the day."), "3,99 €", pal::blue))
-            app.confirmOffer = 0;
+        else if (card(L("Supprimer les pubs", "Remove ads"), L("Plus de pub forcée en fin de journée.", "No forced ad at the end of the day."),
+                         price(offers::store(0)), pal::blue))
+            platform::iapBuy(offers::store(0).sku);
         int goldLeft = offers::goldAdsLeft(s);
         if (goldLeft > 0 && card(L("Pub récompensée", "Rewarded ad"),
                 TextFormat(L("%d pièces. Encore %d aujourd'hui.", "%d coins. %d left today."), cfg::GOLD_AD_GRANT, goldLeft),
@@ -642,12 +629,14 @@ void screenShop(App& app)
             card(L("Pub récompensée", "Rewarded ad"), L("Reviens demain.", "Come back tomorrow."), L("Fait", "Done"), pal::grey);
         for (int i = 1; i < offers::storeCount(); i++) {
             const StoreOffer& o = offers::store(i);
-            if (card(L(o.nameFr, o.nameEn), TextFormat(L("%d pièces", "%d coins"), o.coins), o.price, pal::green))
-                app.confirmOffer = i;
+            if (card(L(o.nameFr, o.nameEn), TextFormat(L("%d pièces", "%d coins"), o.coins), price(o), pal::green))
+                platform::iapBuy(o.sku);
         }
-        ui.text(L("Le paiement du store sera branché ici. Cet essai crédite le compte.",
-                  "Store billing will be connected here. This trial credits the account."),
-                ui.W * 0.5f, ui.H - 48, 20, Fade(WHITE, 0.8f), Align::Center);
+        // Obligatoire sur l'App Store (achat non consommable "remove_ads")
+        if (ui.button({ui.W * 0.5f - 200, std::max(y + 10, ui.H - 110), 400, 70}, L("Restaurer mes achats", "Restore purchases"), pal::grey, 24)) {
+            platform::iapRestore();
+            app.notify(L("Recherche de tes achats...", "Looking for your purchases..."));
+        }
         return;
     }
 
@@ -722,6 +711,34 @@ void screenShop(App& app)
 // ---------------------------------------------------------------------------
 // Options
 // ---------------------------------------------------------------------------
+
+// Premier lancement : accord du joueur avant toute statistique (RGPD). Réponse modifiable dans les Options.
+void screenConsent(App& app)
+{
+    Ui& ui = app.ui;
+    background(app);
+    // la police est en capitales : on affiche la langue active plutôt que "FR | en"
+    if (ui.button({ui.W - 240, cfg::SAFE_TOP, 220, 76}, app.save.lang == 0 ? "Français" : "English", pal::blue, 32)) {
+        app.save.lang = 1 - app.save.lang;
+        setLang((Lang)app.save.lang);
+        app.persist();
+    }
+    Rectangle p = {40, ui.H * 0.18f, ui.W - 80, 640};
+    ui.panel(p, pal::panel, 0.06f);
+    ui.text(L("Aide-nous à améliorer Ubear", "Help us improve Ubear"), ui.W * 0.5f, p.y + 36, 38, pal::ink, Align::Center);
+    ui.textBox(L("Peut-on envoyer des statistiques de jeu anonymes (durée des parties, achats dans la boutique, "
+                 "pubs regardées) ? Aucune donnée personnelle, aucun compte. Tu peux changer d'avis à tout moment dans les Options.",
+                 "Can we send anonymous gameplay statistics (session length, shop purchases, ads watched)? "
+                 "No personal data, no account. You can change your mind anytime in Settings."),
+               {p.x + 40, p.y + 110, p.width - 80, 300}, 30, pal::soft, Align::Center);
+    bool yes = ui.button({p.x + 40, p.y + 430, p.width - 80, 80}, L("Oui, j'accepte", "Yes, I agree"), pal::green, 32);
+    bool no = ui.button({p.x + 40, p.y + 530, p.width - 80, 70}, L("Non merci", "No thanks"), pal::grey, 30);
+    if (yes || no) {
+        app.save.consentAsked = true;
+        analytics::setEnabled(yes);
+        app.persist();
+    }
+}
 
 void screenSettings(App& app)
 {

@@ -8,6 +8,7 @@
 #import <OpenGLES/ES2/glext.h>
 #import <QuartzCore/CAEAGLLayer.h>
 #import <UserNotifications/UserNotifications.h>
+#import <StoreKit/StoreKit.h>
 #import <dlfcn.h>
 
 extern void ubear_ios_init(void);
@@ -226,6 +227,124 @@ void IosTelemetrySend(const char *url, const char *body)
             else break;
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Achats intégrés (StoreKit 1 : StoreKit 2 n'existe qu'en Swift).
+// Les réponses sont mises en file, lues par le jeu à chaque image (IosIapPoll).
+// Types d'événements = ordre de platform::IapEvent::Kind : 0 prix, 1 acheté, 2 en attente, 3 échec.
+// ---------------------------------------------------------------------------
+@interface UbearStore : NSObject <SKProductsRequestDelegate, SKPaymentTransactionObserver>
+@property (nonatomic, strong) NSMutableArray<NSArray *> *events;                         // @[kind, sku, data]
+@property (nonatomic, strong) NSMutableDictionary<NSString *, SKProduct *> *products;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, SKPaymentTransaction *> *unfinished;
+@property (nonatomic, strong) SKProductsRequest *request;
+@property (nonatomic, strong) NSSet<NSString *> *ids;
+@end
+
+@implementation UbearStore
+- (void)push:(int)kind sku:(NSString *)sku data:(NSString *)data
+{
+    @synchronized (self) { [self.events addObject:@[@(kind), sku ?: @"", data ?: @""]]; }
+}
+- (void)query
+{
+    self.request = [[SKProductsRequest alloc] initWithProductIdentifiers:self.ids];
+    self.request.delegate = self;
+    [self.request start];
+}
+- (void)productsRequest:(SKProductsRequest *)request didReceiveResponse:(SKProductsResponse *)response
+{
+    for (SKProduct *p in response.products) {
+        NSNumberFormatter *f = [[NSNumberFormatter alloc] init];
+        f.numberStyle = NSNumberFormatterCurrencyStyle;
+        f.locale = p.priceLocale;
+        @synchronized (self) { self.products[p.productIdentifier] = p; }
+        [self push:0 sku:p.productIdentifier data:[f stringFromNumber:p.price]];
+    }
+}
+- (void)paymentQueue:(SKPaymentQueue *)queue updatedTransactions:(NSArray<SKPaymentTransaction *> *)transactions
+{
+    for (SKPaymentTransaction *t in transactions) {
+        NSString *sku = t.payment.productIdentifier;
+        switch (t.transactionState) {
+        case SKPaymentTransactionStatePurchased:
+        case SKPaymentTransactionStateRestored:
+            @synchronized (self) { self.unfinished[t.transactionIdentifier] = t; }
+            [self push:1 sku:sku data:t.transactionIdentifier];   // finishTransaction après crédit (IosIapFinish)
+            break;
+        case SKPaymentTransactionStateDeferred:                   // contrôle parental : validation plus tard
+            [self push:2 sku:sku data:@""];
+            break;
+        case SKPaymentTransactionStateFailed:
+            [self push:3 sku:sku data:(t.error.code == SKErrorPaymentCancelled ? @"cancel" : [NSString stringWithFormat:@"%ld", (long)t.error.code])];
+            [queue finishTransaction:t];
+            break;
+        default:
+            break;
+        }
+    }
+}
+@end
+
+static UbearStore *ubearStore = nil;
+
+void IosIapStart(const char *const *skus, int count)
+{
+    if (ubearStore != nil) return;
+    ubearStore = [[UbearStore alloc] init];
+    ubearStore.events = [NSMutableArray array];
+    ubearStore.products = [NSMutableDictionary dictionary];
+    ubearStore.unfinished = [NSMutableDictionary dictionary];
+    NSMutableSet *ids = [NSMutableSet set];
+    for (int i = 0; i < count; i++) [ids addObject:[NSString stringWithUTF8String:skus[i]]];
+    ubearStore.ids = ids;
+    // Dès le lancement : StoreKit redonne les achats payés mais pas encore terminés.
+    [[SKPaymentQueue defaultQueue] addTransactionObserver:ubearStore];
+    [ubearStore query];
+}
+
+void IosIapBuy(const char *sku)
+{
+    if (ubearStore == nil) return;
+    NSString *s = [NSString stringWithUTF8String:sku];
+    SKProduct *p;
+    @synchronized (ubearStore) { p = ubearStore.products[s]; }
+    if (p == nil || ![SKPaymentQueue canMakePayments]) {
+        [ubearStore push:3 sku:s data:@"unavailable"];   // hors ligne, achats bloqués ou produit inconnu
+        if (p == nil) [ubearStore query];
+        return;
+    }
+    [[SKPaymentQueue defaultQueue] addPayment:[SKPayment paymentWithProduct:p]];
+}
+
+int IosIapPoll(int *kind, char *sku, int skuLen, char *data, int dataLen)
+{
+    if (ubearStore == nil) return 0;
+    NSArray *e = nil;
+    @synchronized (ubearStore) {
+        if (ubearStore.events.count == 0) return 0;
+        e = ubearStore.events.firstObject;
+        [ubearStore.events removeObjectAtIndex:0];
+    }
+    *kind = [e[0] intValue];
+    strlcpy(sku, [e[1] UTF8String], (size_t)skuLen);
+    strlcpy(data, [e[2] UTF8String], (size_t)dataLen);
+    return 1;
+}
+
+void IosIapFinish(const char *token)
+{
+    if (ubearStore == nil) return;
+    NSString *k = [NSString stringWithUTF8String:token];
+    SKPaymentTransaction *t;
+    @synchronized (ubearStore) { t = ubearStore.unfinished[k]; [ubearStore.unfinished removeObjectForKey:k]; }
+    if (t != nil) [[SKPaymentQueue defaultQueue] finishTransaction:t];
+}
+
+void IosIapRestore(void)
+{
+    if (ubearStore != nil) [[SKPaymentQueue defaultQueue] restoreCompletedTransactions];
 }
 
 int IosOtherMusicPlaying(void)

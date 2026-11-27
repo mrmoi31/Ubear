@@ -1,5 +1,6 @@
 // Services spécifiques à la plateforme (vibration, cycle de vie Android).
 #pragma once
+#include <string>
 
 namespace platform {
 void vibrate(int milliseconds);
@@ -13,6 +14,19 @@ void cancelNotifications();       // annule celles prévues et efface celles aff
 // Statistiques : le lot est écrit sur disque puis envoyé (POST JSON) en tâche de fond,
 // renvoyé plus tard si le réseau manque. PC : affiché dans la console.
 void sendAnalytics(const char* url, const char* body);
+
+// Achats intégrés : Google Play Billing (Billing.java) / StoreKit (rcore_ios.m).
+// PC : achat simulé, crédité tout de suite. Les résultats arrivent par iapPoll().
+struct IapEvent {
+    enum Kind { Price, Purchased, Pending, Failed } kind = Failed;
+    std::string sku;
+    std::string data;   // Price : prix formaté ; Purchased : jeton pour iapFinish ; Failed : "cancel" ou code
+};
+void iapStart(const char* const* skus, int count);   // connexion, prix, achats payés mais pas livrés
+void iapBuy(const char* sku);                         // ouvre la fenêtre de paiement du store
+bool iapPoll(IapEvent& e);
+void iapFinish(const std::string& token, bool consumable);   // après crédit + sauvegarde
+void iapRestore();
 
 // Faux si une autre appli joue de la musique (Spotify, Deezer, appel…).
 void initAudioFocus();

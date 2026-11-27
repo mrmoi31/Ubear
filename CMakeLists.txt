@@ -47,7 +47,7 @@ elseif(IOS_BUILD)
         "-framework UIKit" "-framework Foundation" "-framework QuartzCore"
         "-framework OpenGLES" "-framework CoreGraphics" "-framework CoreVideo"
         "-framework AudioToolbox" "-framework AVFoundation" "-framework CoreAudio"
-        "-framework Security" "-framework UserNotifications" m)
+        "-framework Security" "-framework UserNotifications" "-framework StoreKit" m)
 
     file(GLOB_RECURSE UBEAR_ASSETS CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/assets/*)
     add_executable(ubear MACOSX_BUNDLE ${GAME_SOURCES} ${UBEAR_ASSETS} ${CMAKE_SOURCE_DIR}/ios/Assets.xcassets)

@@ -77,6 +77,7 @@ bool save::load(SaveData& d)
         else if (key == "lang")            d.lang = atoi(val.c_str());
         else if (key == "analytics")       d.analytics = atoi(val.c_str()) != 0;
         else if (key == "installId")       d.installId = val;
+        else if (key == "consentAsked")    d.consentAsked = atoi(val.c_str()) != 0;
         else if (key == "tutorialDone")    d.tutorialDone = atoi(val.c_str()) != 0;
         else if (key == "bestShiftCoins")  d.bestShiftCoins = atoi(val.c_str());
         else if (key == "totalDeliveries") d.totalDeliveries = atoi(val.c_str());
@@ -141,6 +142,7 @@ bool save::write(const SaveData& d)
     out << "lang=" << d.lang << "\n";
     out << "analytics=" << (d.analytics ? 1 : 0) << "\n";
     out << "installId=" << d.installId << "\n";
+    out << "consentAsked=" << (d.consentAsked ? 1 : 0) << "\n";
     out << "tutorialDone=" << (d.tutorialDone ? 1 : 0) << "\n";
     out << "bestShiftCoins=" << d.bestShiftCoins << "\n";
     out << "totalDeliveries=" << d.totalDeliveries << "\n";
@@ -177,11 +179,11 @@ void save::erase(SaveData& d)
     float mv = d.musicVol, sv = d.sfxVol;
     int vib = d.vibration;
     int lang = d.lang;
-    bool stats = d.analytics;
+    bool stats = d.analytics, asked = d.consentAsked;
     std::string install = d.installId;   // même appareil : même identifiant
     d = SaveData{};
     d.musicVol = mv; d.sfxVol = sv; d.vibration = vib; d.lang = lang;
-    d.analytics = stats; d.installId = install;
+    d.analytics = stats; d.consentAsked = asked; d.installId = install;
     d.storySeen = true;
     d.applyDefaults();
     write(d);

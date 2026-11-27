@@ -1,6 +1,6 @@
 // Statistiques joueurs anonymes, envoyées par lots à PostHog (format /batch/).
 // Aucune donnée personnelle : un identifiant aléatoire par installation.
-// Le joueur peut refuser dans les Options (SaveData::analytics).
+// Rien n'est collecté avant l'accord du joueur (premier lancement) ; modifiable dans les Options.
 #pragma once
 #include "Save.hpp"
 

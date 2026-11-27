@@ -206,6 +206,87 @@ void platform::sendAnalytics(const char* url, const char* body)
     });
 }
 
+namespace {
+jclass billingClass = nullptr;
+template <class F> void withBilling(F f) { withAppClass(billingClass, "com.ubear.game.Billing", f); }
+
+jstring jstr(JNIEnv* env, const char* s) { return env->NewStringUTF(s); }
+}
+
+void platform::iapStart(const char* const* skus, int count)
+{
+    withBilling([&](JNIEnv* env, jobject activity) {
+        jmethodID m = env->GetStaticMethodID(billingClass, "start", "(Landroid/app/Activity;[Ljava/lang/String;)V");
+        if (!m) return;
+        jobjectArray arr = env->NewObjectArray(count, env->FindClass("java/lang/String"), nullptr);
+        for (int i = 0; i < count; i++) {
+            jstring j = jstr(env, skus[i]);
+            env->SetObjectArrayElement(arr, i, j);
+            env->DeleteLocalRef(j);
+        }
+        env->CallStaticVoidMethod(billingClass, m, activity, arr);
+        env->DeleteLocalRef(arr);
+    });
+}
+
+void platform::iapBuy(const char* sku)
+{
+    withBilling([&](JNIEnv* env, jobject) {
+        jmethodID m = env->GetStaticMethodID(billingClass, "buy", "(Ljava/lang/String;)V");
+        if (!m) return;
+        jstring j = jstr(env, sku);
+        env->CallStaticVoidMethod(billingClass, m, j);
+        env->DeleteLocalRef(j);
+    });
+}
+
+bool platform::iapPoll(IapEvent& e)
+{
+    if (!billingClass) return false;   // iapStart pas encore appelé
+    bool got = false;
+    withBilling([&](JNIEnv* env, jobject) {
+        static jmethodID m = env->GetStaticMethodID(billingClass, "poll", "()[Ljava/lang/String;");
+        if (!m) return;
+        jobjectArray arr = (jobjectArray)env->CallStaticObjectMethod(billingClass, m);
+        if (env->ExceptionCheck() || !arr) return;
+        std::string f[3];
+        for (int i = 0; i < 3 && i < env->GetArrayLength(arr); i++) {
+            jstring js = (jstring)env->GetObjectArrayElement(arr, i);
+            if (!js) continue;
+            const char* c = env->GetStringUTFChars(js, nullptr);
+            f[i] = c;
+            env->ReleaseStringUTFChars(js, c);
+            env->DeleteLocalRef(js);
+        }
+        env->DeleteLocalRef(arr);
+        e.kind = f[0] == "price" ? IapEvent::Price : f[0] == "purchased" ? IapEvent::Purchased
+               : f[0] == "pending" ? IapEvent::Pending : IapEvent::Failed;
+        e.sku = f[1];
+        e.data = f[2];
+        got = true;
+    });
+    return got;
+}
+
+void platform::iapFinish(const std::string& token, bool consumable)
+{
+    withBilling([&](JNIEnv* env, jobject) {
+        jmethodID m = env->GetStaticMethodID(billingClass, "finish", "(Ljava/lang/String;Z)V");
+        if (!m) return;
+        jstring j = jstr(env, token.c_str());
+        env->CallStaticVoidMethod(billingClass, m, j, (jboolean)consumable);
+        env->DeleteLocalRef(j);
+    });
+}
+
+void platform::iapRestore()
+{
+    withBilling([](JNIEnv* env, jobject) {
+        jmethodID m = env->GetStaticMethodID(billingClass, "restore", "()V");
+        if (m) env->CallStaticVoidMethod(billingClass, m);
+    });
+}
+
 void platform::initAudioFocus()
 {
     bool attached = false;
@@ -246,6 +327,26 @@ extern "C" void IosNotifyRequest(void);
 extern "C" void IosNotifySchedule(int id, long long delaySec, const char* title, const char* text);
 extern "C" void IosNotifyCancelAll(void);
 extern "C" void IosTelemetrySend(const char* url, const char* body);
+extern "C" void IosIapStart(const char* const* skus, int count);
+extern "C" void IosIapBuy(const char* sku);
+extern "C" int  IosIapPoll(int* kind, char* sku, int skuLen, char* data, int dataLen);
+extern "C" void IosIapFinish(const char* token);
+extern "C" void IosIapRestore(void);
+
+void platform::iapStart(const char* const* skus, int count) { IosIapStart(skus, count); }
+void platform::iapBuy(const char* sku) { IosIapBuy(sku); }
+bool platform::iapPoll(IapEvent& e)
+{
+    int kind = 0;
+    char sku[128], data[512];
+    if (!IosIapPoll(&kind, sku, sizeof(sku), data, sizeof(data))) return false;
+    e.kind = (IapEvent::Kind)kind;   // même ordre que IapEvent::Kind
+    e.sku = sku;
+    e.data = data;
+    return true;
+}
+void platform::iapFinish(const std::string& token, bool) { IosIapFinish(token.c_str()); }   // StoreKit : finish pour tous
+void platform::iapRestore() { IosIapRestore(); }
 
 void platform::sendAnalytics(const char* url, const char* body) { IosTelemetrySend(url, body); }
 
@@ -261,6 +362,20 @@ void platform::initAudioFocus() {}
 bool platform::allowGameMusic() { return IosOtherMusicPlaying() == 0; }
 
 #else
+
+#include <deque>
+static std::deque<platform::IapEvent> g_fakeStore;   // PC : pas de store, achat accepté tout de suite
+void platform::iapStart(const char* const*, int) {}
+void platform::iapBuy(const char* sku) { g_fakeStore.push_back({platform::IapEvent::Purchased, sku, "desktop"}); }
+bool platform::iapPoll(IapEvent& e)
+{
+    if (g_fakeStore.empty()) return false;
+    e = g_fakeStore.front();
+    g_fakeStore.pop_front();
+    return true;
+}
+void platform::iapFinish(const std::string&, bool) {}
+void platform::iapRestore() {}
 
 void platform::requestNotifications() {}
 void platform::scheduleNotification(int, long long, const char*, const char*) {}

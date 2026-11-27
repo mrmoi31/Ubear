@@ -18,7 +18,8 @@ struct SaveData {
     float sfxVol   = 1.0f;
     int   vibration = 1;                    // 0 aucune, 1 toutes, 2 importantes seulement
     int   lang = 0;                         // 0 FR, 1 EN
-    bool  analytics = true;                 // statistiques anonymes acceptées
+    bool  analytics = false;                // statistiques anonymes acceptées
+    bool  consentAsked = false;             // question des statistiques posée au premier lancement
     std::string installId;                  // identifiant aléatoire de l'installation (statistiques)
     bool  tutorialDone = false;
     bool  storySeen = false;

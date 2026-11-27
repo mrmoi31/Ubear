@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.ubear.game"
-    android:versionCode="1"
-    android:versionName="1.0.0">
+<!-- Package, versions et SDK : android/app/build.gradle. La permission BILLING vient de la bibliothèque Play Billing. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
     <uses-feature android:glEsVersion="0x00020000" android:required="true" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -14,9 +11,11 @@
         android:label="Ubear"
         android:icon="@mipmap/ic_launcher"
         android:hasCode="true"
-        android:extractNativeLibs="true"
         android:allowBackup="true"
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+
+        <!-- Android 16 (cible 36) ignore le verrou portrait sur tablette : on garde le portrait. -->
+        <property android:name="android.window.PROPERTY_COMPAT_ALLOW_RESTRICTED_RESIZABILITY" android:value="true" />
 
         <activity
             android:name="android.app.NativeActivity"

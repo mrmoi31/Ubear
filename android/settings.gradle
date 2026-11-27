@@ -1,0 +1,10 @@
+// Build Android (APK de test + AAB pour Google Play). Lancer depuis la racine : .\build_apk.ps1
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories { google(); mavenCentral() }
+}
+rootProject.name = 'Ubear'
+include ':app'

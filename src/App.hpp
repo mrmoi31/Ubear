@@ -5,6 +5,7 @@
 #include "core/Save.hpp"
 #include "core/Ui.hpp"
 
+#include <map>
 #include <memory>
 #include <string>
 
@@ -48,7 +49,7 @@ struct App {
     bool  confirmReset = false;
     AdSlot adSlot = AdSlot::None;
     float adTime = 0.0f;
-    int   confirmOffer = -1;
+    std::map<std::string, std::string> iapPrices;   // sku -> prix affiché par le store
     std::string confirmBuy;          // achat boutique en attente : id cosmétique ou "upN"
 
     App();
